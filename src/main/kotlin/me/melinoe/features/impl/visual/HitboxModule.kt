@@ -8,11 +8,11 @@ import me.melinoe.features.Module
 import me.melinoe.clickgui.settings.impl.BooleanSetting
 import me.melinoe.clickgui.settings.impl.ColorSetting
 import me.melinoe.clickgui.settings.impl.DropdownSetting
+import me.melinoe.clickgui.settings.impl.SelectorSetting
 import me.melinoe.clickgui.settings.Setting.Companion.withDependency
 import me.melinoe.utils.Color
 import me.melinoe.utils.renderBoundingBox
-import me.melinoe.utils.render.drawFilledBox
-import me.melinoe.utils.render.drawWireFrameBox
+import me.melinoe.utils.render.drawStyledBox
 import net.minecraft.client.CameraType
 import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.entity.item.ItemEntity
@@ -28,9 +28,8 @@ object HitboxModule : Module(
     description = "Renders entity hitboxes with customizable colors and fill."
 ) {
 
-    private val fillBoxSetting by BooleanSetting("Fill Box", true, desc = "Fill the hitbox with color")
-    private val fillColorSetting by ColorSetting("Fill Color", Color(255, 255, 255, 0.2f), true, desc = "Color of the filled hitbox")
-    private val outlineColorSetting by ColorSetting("Outline Color", Color(255, 255, 255, 1f), true, desc = "Color of the hitbox outline")
+    private val renderStyle by SelectorSetting("Render Style", "Filled Outline", listOf("Outline", "Filled Outline"), desc = "Style of the box.")
+    private val color by ColorSetting("Color", Color(255, 255, 255, 1f), true, desc = "Color of the hitbox")
     private val renderPlayersSetting by BooleanSetting("Players", true, desc = "Render hitboxes for players")
     private val renderMobsSetting by BooleanSetting("Mobs", true, desc = "Render hitboxes for mobs")
     private val renderItemsSetting by BooleanSetting("Items", false, desc = "Render hitboxes for items")
@@ -38,9 +37,8 @@ object HitboxModule : Module(
     
     // Telos Dropdown
     private val telosDropdown by DropdownSetting("Telos", false)
-    private val renderTelosSetting by BooleanSetting("Enable Hitboxes", true, desc = "Render hitboxes for other entities (armor stands, minecarts, etc.)").withDependency { telosDropdown }
-    private val telosFillColorSetting by ColorSetting("Telos Fill Color", Color(255, 100, 100, 0.2f), true, desc = "Fill color for Telos mob hitboxes").withDependency { telosDropdown }
-    private val telosOutlineColorSetting by ColorSetting("Telos Outline Color", Color(255, 100, 100, 1f), true, desc = "Outline color for Telos mob hitboxes").withDependency { telosDropdown }
+    private val renderTelosSetting by BooleanSetting("Enable Hitboxes", true, desc = "Render hitboxes for Telos entities (bosses, mobs, attacks.)").withDependency { telosDropdown }
+    private val telosColor by ColorSetting("Telos Color", Color(255, 100, 100, 1f), true, desc = "Color for Telos hitboxes").withDependency { telosDropdown }
 
     init {
         on<RenderEvent.Extract> {
@@ -54,13 +52,7 @@ object HitboxModule : Module(
                 // Use interpolated render bounding box for smooth movement
                 val box = player.renderBoundingBox
                 
-                // Render filled box if enabled
-                if (fillBoxSetting) {
-                    drawFilledBox(box, fillColorSetting, depth = false)
-                }
-
-                // Render outline
-                drawWireFrameBox(box, outlineColorSetting, depth = false)
+                drawStyledBox(box, color, renderStyle, true)
             }
 
             // Iterate through all other entities in the level
@@ -92,17 +84,10 @@ object HitboxModule : Module(
                 
                 if (width < minSize || height < minSize || depth < minSize) continue
 
-                // Use Telos colors if this is a Telos entity, otherwise use default colors
-                val fillColor = if (isTelos) telosFillColorSetting else fillColorSetting
-                val outlineColor = if (isTelos) telosOutlineColorSetting else outlineColorSetting
+                // Use Telos color if this is a Telos entity, otherwise use default color
+                val boxColor = if (isTelos) telosColor else color
 
-                // Render filled box if enabled
-                if (fillBoxSetting) {
-                    drawFilledBox(box, fillColor, depth = false)
-                }
-
-                // Render outline
-                drawWireFrameBox(box, outlineColor, depth = false)
+                drawStyledBox(box, boxColor, renderStyle, true)
             }
         }
     }

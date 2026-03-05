@@ -146,7 +146,7 @@ private fun PoseStack.renderBatchedFilledBoxes(
     boxes: List<List<BoxData>>,
     bufferSource: MultiBufferSource.BufferSource
 ) {
-    val filledBoxRenderLayers = listOf(CustomRenderLayer.QUADS, CustomRenderLayer.QUADS)
+    val filledBoxRenderLayers = listOf(CustomRenderLayer.TRIANGLE_STRIP, CustomRenderLayer.TRIANGLE_STRIP_ESP)
     val last = this.last()
     
     for (depthState in 0..1) {
@@ -257,6 +257,21 @@ fun RenderEvent.Extract.drawFilledBox(aabb: AABB, color: Color, depth: Boolean =
     consumer.filledBoxes[if (depth) DEPTH else NO_DEPTH].add(
         BoxData(aabb, color.redFloat, color.greenFloat, color.blueFloat, color.alphaFloat, 3f)
     )
+}
+
+fun RenderEvent.Extract.drawStyledBox(
+    aabb: AABB,
+    color: Color,
+    style: Int = 1,
+    depth: Boolean = true
+) {
+    when (style) {
+        0 -> drawWireFrameBox(aabb, color, depth = depth)
+        1 -> {
+            drawFilledBox(aabb, Color(color.red, color.green, color.blue, (color.alphaFloat * 0.5f).coerceIn(0f, 1f)), depth = depth)
+            drawWireFrameBox(aabb, color, depth = depth)
+        }
+    }
 }
 
 fun RenderEvent.Extract.drawCircle(
@@ -481,41 +496,48 @@ object PrimitiveRenderer {
             buffer.addVertex(matrix, x, y, z).setColor(r, g, b, a)
         }
 
-        // Bottom face (y = minY)
         vertex(minX, minY, minZ)
-        vertex(maxX, minY, minZ)
-        vertex(maxX, minY, maxZ)
-        vertex(minX, minY, maxZ)
+        vertex(minX, minY, minZ)
+        vertex(minX, minY, minZ)
 
-        // Top face (y = maxY)
+        vertex(minX, minY, maxZ)
         vertex(minX, maxY, minZ)
         vertex(minX, maxY, maxZ)
+
+        vertex(minX, maxY, maxZ)
+
+        vertex(minX, minY, maxZ)
+        vertex(maxX, maxY, maxZ)
+        vertex(maxX, minY, maxZ)
+
+        vertex(maxX, minY, maxZ)
+
+        vertex(maxX, minY, minZ)
         vertex(maxX, maxY, maxZ)
         vertex(maxX, maxY, minZ)
 
-        // North face (z = minZ)
-        vertex(minX, minY, minZ)
-        vertex(minX, maxY, minZ)
         vertex(maxX, maxY, minZ)
-        vertex(maxX, minY, minZ)
 
-        // South face (z = maxZ)
+        vertex(maxX, minY, minZ)
+        vertex(minX, maxY, minZ)
+        vertex(minX, minY, minZ)
+
+        vertex(minX, minY, minZ)
+
+        vertex(maxX, minY, minZ)
         vertex(minX, minY, maxZ)
         vertex(maxX, minY, maxZ)
-        vertex(maxX, maxY, maxZ)
-        vertex(minX, maxY, maxZ)
 
-        // West face (x = minX)
-        vertex(minX, minY, minZ)
-        vertex(minX, minY, maxZ)
-        vertex(minX, maxY, maxZ)
+        vertex(maxX, minY, maxZ)
+
         vertex(minX, maxY, minZ)
-
-        // East face (x = maxX)
-        vertex(maxX, minY, minZ)
+        vertex(minX, maxY, minZ)
+        vertex(minX, maxY, maxZ)
         vertex(maxX, maxY, minZ)
         vertex(maxX, maxY, maxZ)
-        vertex(maxX, minY, maxZ)
+
+        vertex(maxX, maxY, maxZ)
+        vertex(maxX, maxY, maxZ)
     }
 
     fun renderVector(
