@@ -166,6 +166,7 @@ object ModuleManager {
             me.melinoe.features.impl.visual.HitboxModule,
             me.melinoe.features.impl.visual.ChatFilterModule,
             me.melinoe.features.impl.visual.HideArmorModule,
+            me.melinoe.features.impl.visual.ArmorHUDModule,
             
             // Tracking
             me.melinoe.features.impl.tracking.LifetimeStatsModule,

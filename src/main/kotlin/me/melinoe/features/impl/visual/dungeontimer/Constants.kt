@@ -10,9 +10,9 @@ object Constants {
     const val PB_UPDATE_INTERVAL_MS = 1000L
     
     // Icons
-    const val ICON_SKULL = "§c☠"
-    const val ICON_FIRE = "§6🔥"
-    const val ICON_STAR = "§e⭐"
-    const val ICON_SPLIT = "§2☄"
+    const val ICON_SKULL = "<red>☠"
+    const val ICON_FIRE = "<gold>🔥"
+    const val ICON_STAR = "<yellow>⭐"
+    const val ICON_SPLIT = "<dark_green>☄"
     const val ICON_BLOODSHOT = "𕌜"
 }

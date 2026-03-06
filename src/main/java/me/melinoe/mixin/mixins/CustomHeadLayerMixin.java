@@ -1,49 +1,57 @@
 package me.melinoe.mixin.mixins;
 
-import com.mojang.blaze3d.vertex.PoseStack;
 import me.melinoe.features.impl.visual.HideArmorModule;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.entity.layers.CustomHeadLayer;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Mixin to hide custom head/helmet rendering (including 3D resource pack helmets).
- * This handles helmets with custom models from resource packs.
- * Only affects players, not other humanoid entities.
- */
-@Mixin(CustomHeadLayer.class)
-public abstract class CustomHeadLayerMixin {
+import java.util.List;
 
-    @Inject(
-            method = "submit(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;FF)V",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private <S extends LivingEntityRenderState> void melinoe$hideCustomHead(
-            PoseStack poseStack,
-            SubmitNodeCollector submitNodeCollector,
-            int light,
-            S livingEntityRenderState,
-            float yRot,
-            float xRot,
+@Mixin(LivingEntityRenderer.class)
+public abstract class CustomHeadLayerMixin<T extends LivingEntity, S extends LivingEntityRenderState> {
+
+    // Hidden helmet models
+    @Unique
+    private final List<String> HIDDEN_MODELS = List.of(
+            "material/armour/heavy/helmet/ut-mandorla",
+            "material/armour/heavy/helmet/ut-crown",
+            "material/armour/heavy/helmet/ex-crown",
+            "material/armour/magical/helmet/ut-mage",
+            "material/armour/magical/helmet/ex-mage",
+            "material/armour/light/helmet/ut-sentinel",
+            "material/armour/light/helmet/ex-sentinel",
+            "material/armour/light/helmet/ut-persistent"
+    );
+
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    private void melinoe$hideCustomHeadModel(
+            T entity,
+            S state,
+            float partialTick,
             CallbackInfo ci
     ) {
         if (HideArmorModule.INSTANCE.getEnabled()) {
-            // Only hide for players (AvatarRenderState)
-            // This excludes zombies, skeletons, piglins, and other humanoid mobs
-            if (livingEntityRenderState instanceof HumanoidRenderState humanoidRenderState &&
-                humanoidRenderState instanceof AvatarRenderState) {
-                // Check if it's the local player (nameTag is null for local player)
-                boolean isLocalPlayer = humanoidRenderState.nameTag == null;
-                if (isLocalPlayer) {
-                    ci.cancel();
-                }
+            if (entity != Minecraft.getInstance().player) {
+                return;
+            }
+
+            ItemStack stack = entity.getItemBySlot(EquipmentSlot.HEAD);
+            if (stack.isEmpty()) return;
+
+            ResourceLocation modelID = stack.get(DataComponents.ITEM_MODEL);
+
+            if (modelID != null && HIDDEN_MODELS.contains(modelID.getPath())) {
+                state.headItem.clear();
             }
         }
     }
