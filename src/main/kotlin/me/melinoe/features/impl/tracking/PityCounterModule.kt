@@ -26,7 +26,7 @@ import net.minecraft.world.item.ItemStack
 
 /**
  * Pity Counter Module - displays pity counters for items from the current boss
- * 
+ *
  * Features:
  * - Item-based tracking (not boss-based)
  * - Icon rendering for each item
@@ -48,7 +48,7 @@ object PityCounterModule : Module(
     
     // Value color (always white by default, like Ttt)
     private val valueColor by ColorSetting("Value Color", Color(0xFFFFFFFF.toInt()), desc = "Color for pity counter values")
-
+    
     val useCustomMsg by BooleanSetting("Custom Drop", default = true, desc = "Show custom drop messages which include pity")
     val showAnnounceButton by BooleanSetting("Announce Button", true, desc = "Show the announce button at the end of drop messages")
     
@@ -71,7 +71,7 @@ object PityCounterModule : Module(
         on<DungeonEntryEvent> {
             handleDungeonEntry(dungeon)
         }
-
+        
         on<DungeonChangeEvent> {
             handleDungeonEntry(newDungeon)
         }
@@ -130,8 +130,63 @@ object PityCounterModule : Module(
      * Get items to display based on current boss
      */
     private fun getItemsToDisplay(): List<Item> {
-        val boss = currentBossData ?: return emptyList()
-        return boss.items.toList()
+        // Skip if in nexus
+        if (LocalAPI.isInNexus()) return emptyList()
+        
+        val player = mc.player ?: return emptyList()
+        
+        val px = player.x
+        val py = player.y
+        val pz = player.z
+        
+        // Shadowlands bosses section
+        if (LocalAPI.getCurrentCharacterArea() == "Shadowlands") {
+            var minDistance = Double.MAX_VALUE
+            
+            for (boss in listOf(BossData.DEFENDER, BossData.REAPER, BossData.WARDEN, BossData.HERALD)) {
+                val dist = kotlin.math.abs(px - boss.spawnPosition!!.x) +
+                        kotlin.math.abs(py - boss.spawnPosition.y) +
+                        kotlin.math.abs(pz - boss.spawnPosition.z)
+                
+                if (dist < minDistance) {
+                    minDistance = dist
+                    currentBossData = boss
+                }
+            }
+            
+            return currentBossData!!.items.toList()
+        }
+        
+        // Dungeon section
+        if (currentBossData != null) return currentBossData!!.items.toList()
+        
+        // Realm boss section
+        var nearestBossData: BossData? = null
+        var minDistance = 5625.0 // 75 squared
+        
+        // Scan for realm bosses
+        for (boss in me.melinoe.features.impl.tracking.bosstracker.BossData.entries) {
+            if (boss.name == "RAPHAEL" || boss.name == "DEFENDER" || boss.name == "REAPER" || boss.name == "WARDEN" || boss.name == "HERALD") continue
+            
+            val pos = boss.spawnPosition
+            
+            // Calculate distance to the center of the boss spawn block
+            val dx = px - (pos.x + 0.5)
+            val dy = py - (pos.y + 0.5)
+            val dz = pz - (pos.z + 0.5)
+            val distance = dx * dx + dy * dy + dz * dz
+            
+            if (distance <= minDistance) {
+                // Map the other BossData to the BossData type containing items by its label
+                val dataBoss = BossData.findByKey(boss.label)
+                if (dataBoss != null) {
+                    minDistance = distance
+                    nearestBossData = dataBoss
+                }
+            }
+        }
+        
+        return nearestBossData?.items?.toList() ?: emptyList()
     }
     
     /**

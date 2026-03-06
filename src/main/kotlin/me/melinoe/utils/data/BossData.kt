@@ -1,6 +1,7 @@
 package me.melinoe.utils.data
 
 import net.minecraft.core.BlockPos
+import java.util.*
 
 /**
  * Boss data enum containing all bosses in Telos.
@@ -12,48 +13,48 @@ enum class BossData(
     val items: Array<Item> = emptyArray()
 ) {
     // World Bosses
-    ANUBIS("Anubis", BlockPos(458, 204, -467), BossType.WORLD, arrayOf(
+    ANUBIS("Anubis", BlockPos(458, 214, -467), BossType.WORLD, arrayOf(
         Item.ANUBIS_STAFF, Item.JEWEL_OF_THE_NILE
     )),
-    ASTAROTH("Astaroth", BlockPos(250, 217, 60), BossType.WORLD, arrayOf(
+    ASTAROTH("Astaroth", BlockPos(250, 228, 60), BossType.WORLD, arrayOf(
         Item.ORB_OF_CONFLICT, Item.KUNAI_OF_CONFLICT
     )),
-    CHUNGUS("Chungus", BlockPos(61, 256, -490), BossType.WORLD, arrayOf(
+    CHUNGUS("Chungus", BlockPos(61, 266, -490), BossType.WORLD, arrayOf(
         Item.CARROT_ON_A_STICK, Item.SPRING_SEASONED_SCRIPTURE
     )),
-    FREDDY("Freddy", BlockPos(-136, 200, 653), BossType.WORLD, arrayOf(
+    FREDDY("Freddy", BlockPos(-136, 214, 653), BossType.WORLD, arrayOf(
         Item.EXOSKELETON_HOOD, Item.FREDDYS_MICROPHONE
     )),
-    GLUMI("Glumi", BlockPos(339, 222, 552), BossType.WORLD, arrayOf(
+    GLUMI("Glumi", BlockPos(317, 200, 558), BossType.WORLD, arrayOf(
         Item.CRYSTAL_POISON, Item.CRYSTAL_KUNAI
     )),
-    ILLARIUS("Illarius", BlockPos(478, 200, -45), BossType.WORLD, arrayOf(
+    ILLARIUS("Illarius", BlockPos(479, 211, -44), BossType.WORLD, arrayOf(
         Item.BOW_OF_THE_FOREST, Item.CURSED_BRIGADINE
     )),
-    LOTIL("Lotil", BlockPos(-138, 214, 17), BossType.WORLD, arrayOf(
+    LOTIL("Lotil", BlockPos(-138, 223, 17), BossType.WORLD, arrayOf(
         Item.SHIELD_OF_OGMUR, Item.CLOAK_OF_THE_WARLORD
     )),
-    OOZUL("Oozul", BlockPos(-424, 195, 91), BossType.WORLD, arrayOf(
+    OOZUL("Oozul", BlockPos(-424, 205, 91), BossType.WORLD, arrayOf(
         Item.DIMENSIONAL_STAR, Item.DIRK_OF_CHRONOS
     )),
-    TIDOL("Tidol", BlockPos(-543, 190, 364), BossType.WORLD, arrayOf(
+    TIDOL("Tidol", BlockPos(-543, 199, 364), BossType.WORLD, arrayOf(
         Item.EMBLEM_OF_THE_JUGGERNAUT, Item.GREAVES_OF_THE_JUGGERNAUT
     )),
-    VALUS("Valus", BlockPos(35, 210, 307), BossType.WORLD, arrayOf(
+    VALUS("Valus", BlockPos(35, 220, 307), BossType.WORLD, arrayOf(
         Item.CLOAK_OF_BLOODY_SURPRISES, Item.SPOOKY_SANDALS
     )),
-    HOLLOWBANE("Hollowbane", BlockPos(232, 150, 696), BossType.WORLD),
-    CLAUS("Claus", BlockPos(10, 212, -121), BossType.WORLD),
-    WARDEN("Warden", null, BossType.WORLD, arrayOf(
+    HOLLOWBANE("Hollowbane", BlockPos(233, 200, 703), BossType.WORLD),
+    CLAUS("Claus", BlockPos(10, 222, -122), BossType.WORLD),
+    WARDEN("Warden", BlockPos(-125, -46, -122), BossType.WORLD, arrayOf(
         Item.WARDENS_FACEGUARD, Item.WARDENS_GARMENT, Item.DAWNBRINGER
     )),
-    HERALD("Herald", null, BossType.WORLD, arrayOf(
+    HERALD("Herald", BlockPos(148, -47, -176), BossType.WORLD, arrayOf(
         Item.HERALDIC_HEELGUARDS, Item.LUMINOUS_FLAME, Item.HERALDS_ESSENCE
     )),
-    REAPER("Reaper", null, BossType.WORLD, arrayOf(
+    REAPER("Reaper", BlockPos(22, -47, 323), BossType.WORLD, arrayOf(
         Item.SOULLESS_SHOES, Item.CHALICE_OF_ROT, Item.REAPERS_VEST
     )),
-    DEFENDER("Defender", null, BossType.WORLD, arrayOf(
+    DEFENDER("Defender", BlockPos(65, -51, 64), BossType.WORLD, arrayOf(
         Item.SHROUDED_SHIELD, Item.PHANTASMIC_GREAVES, Item.AFTERBURNER
     )),
     
@@ -204,13 +205,19 @@ enum class BossData(
     ));
 
     companion object {
-        private val bossDataMap: Map<String, BossData> = values().associateBy { it.label }
-
+        private val bossDataMap: Map<String, BossData> = entries.associateBy { it.label }
+        private val bossItemMap: Map<Item, BossData> = entries.flatMap { boss -> boss.items.map { bossItem -> bossItem to boss } }.toMap()
+        
         /**
          * Find a boss by its label/name.
          */
         fun findByKey(name: String): BossData? = bossDataMap[name]
-
+        
+        /**
+         * Find a boss by one of its items
+         */
+        fun findByItem(item: Item): BossData? = bossItemMap[item]
+        
         /**
          * Find a boss by its enum name (case-insensitive).
          */

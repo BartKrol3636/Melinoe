@@ -167,7 +167,7 @@ object DiscordRPCModule : Module(
             var secondLine = ""
             
             if (showDungeon) {
-                secondLine = if (BossBarUtils.isInDungeon()) {
+                secondLine = if (LocalAPI.isInDungeon()) {
                     val bossName = DungeonData.findByKey(area)?.finalBoss?.label
                     bossName?.let { "Fighting $it" } ?: "In an unknown place"
                 } else if (fightingBoss.isNotBlank() && fightingBoss.lowercase() !in listOf("null", "none")) {

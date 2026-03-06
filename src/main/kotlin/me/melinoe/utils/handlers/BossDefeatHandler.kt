@@ -2,23 +2,30 @@ package me.melinoe.utils.handlers
 
 import me.melinoe.Melinoe
 import me.melinoe.events.ChatPacketEvent
+import me.melinoe.events.DungeonChangeEvent
+import me.melinoe.events.DungeonEntryEvent
+import me.melinoe.events.DungeonExitEvent
 import me.melinoe.events.core.EventBus
 import me.melinoe.events.core.on
+import me.melinoe.features.impl.tracking.PityCounterModule
+import me.melinoe.features.impl.visual.dungeontimer.GradientTextBuilder
+import me.melinoe.features.impl.visual.dungeontimer.PityCounterConfig
 import me.melinoe.features.impl.visual.dungeontimer.TimerModule
 import me.melinoe.utils.ChatManager.hideMessage
-import me.melinoe.utils.Color
 import me.melinoe.utils.Message
 import me.melinoe.utils.ServerUtils
 import me.melinoe.utils.data.BagTracker
 import me.melinoe.utils.data.BossData
 import me.melinoe.utils.data.BossType
+import me.melinoe.utils.data.DungeonData
 import me.melinoe.utils.getCenteredText
 import me.melinoe.utils.noControlCodes
+import me.melinoe.utils.toNative
 import net.minecraft.network.chat.Component
 
 /**
  * Handles boss defeat messages from the server.
- * 
+ *
  * Message format from server:
  * ===============================================  <- First separator: HIDE and send our separator + custom message
  * BossName                                        <- Capture boss name, HIDE this line
@@ -35,12 +42,26 @@ object BossDefeatHandler {
     private var pendingBossName: String? = null
     private var bossNameCaptured = false
     
+    private var currentDungeon: DungeonData? = null
+    
     init {
         EventBus.subscribe(this)
         
         on<ChatPacketEvent> {
             if (!ServerUtils.isOnTelos()) return@on
             handleMessage(value)
+        }
+        
+        on<DungeonEntryEvent> {
+            currentDungeon = dungeon
+        }
+        
+        on<DungeonExitEvent> {
+            currentDungeon = null
+        }
+        
+        on<DungeonChangeEvent> {
+            currentDungeon = newDungeon
         }
     }
     
@@ -79,18 +100,14 @@ object BossDefeatHandler {
         val wasTrackingBefore = trackerBit
         trackerBit = !trackerBit
         
-        // If we're toggling ON (first separator), hide it and send our own separator
-        if (trackerBit && !wasTrackingBefore) {
-            hideMessage() // Hide the first separator
-            Message.separator() // Send our separator
-        }
+        // Always hide the message
+        hideMessage()
         
-        // If we're toggling OFF (second separator) and have a pending boss name, process tracking
         if (!trackerBit && wasTrackingBefore && pendingBossName != null) {
             processBossDefeat(pendingBossName!!)
             pendingBossName = null
-            hideMessage() // Hide the second separator
-            Message.separator() // Send our separator
+            
+            Message.separator()
         }
         
         // Reset boss name captured flag when toggling
@@ -119,17 +136,57 @@ object BossDefeatHandler {
     private fun ChatPacketEvent.captureBossName(cleanValue: String, strippedValue: String) {
         pendingBossName = cleanValue
         bossNameCaptured = true
+        hideMessage()
         
-        // Find the boss data and send custom message immediately
+        // Find the boss data
         val bossData = BossData.findByKey(strippedValue)
-        if (bossData != null && bossData.bossType == BossType.DUNGEON) {
-            // Send the custom message (separator was already sent when hiding first separator)
-            TimerModule.onBossDefeated(bossData)
-            // Add separator after boss defeat message, before damage stats
-            Message.separator()
+        val dungeon = currentDungeon
+        
+        val timerLines = mutableListOf<Component>()
+        val pityLines = mutableListOf<String>()
+        
+        var headerComponent: Component? = null
+        var plainHeaderText = strippedValue
+        
+        if (bossData != null) {
+            // Make the Pity Module Lines
+            if (PityCounterModule.enabled && bossData.bossType == BossType.DUNGEON && dungeon != null) {
+                val pityLine = PityCounterConfig.buildPityLine(dungeon, bossData)
+                if (pityLine.isNotEmpty()) {
+                    pityLines.add(pityLine)
+                }
+            }
+            
+            // Make the Timer Module Lines
+            timerLines.addAll(TimerModule.processBossDefeatAndGetLines(bossData))
+            
+            // Set the dungeon/boss name
+            if (bossData.bossType == BossType.DUNGEON && dungeon != null) {
+                headerComponent = GradientTextBuilder.buildGradientText(dungeon.areaName, dungeon.dungeonType)
+                plainHeaderText = dungeon.areaName
+            }
         }
         
-        hideMessage() // Hide only the boss name line
+        Message.separator()
+        
+        // Centered Dungeon/Boss Name
+        val headerSpaces = getCenteredText(plainHeaderText).takeWhile { it == ' ' }
+        val finalHeader = Component.literal(headerSpaces).append(headerComponent ?: "<yellow><bold>$strippedValue</bold></yellow>".toNative())
+        Melinoe.mc.execute { Melinoe.mc.gui?.chat?.addMessage(finalHeader) }
+        
+        // Pity Module Lines
+        pityLines.forEach {
+            Message.centeredRaw(it)
+        }
+        
+        // Timer Module Lines
+        for (line in timerLines) {
+            val lineSpaces = getCenteredText(line.string).takeWhile { it == ' ' }
+            val finalLine = Component.literal(lineSpaces).append(line)
+            Melinoe.mc.execute { Melinoe.mc.gui?.chat?.addMessage(finalLine) }
+        }
+        
+        Message.separator()
     }
     
     /**
@@ -143,7 +200,7 @@ object BossDefeatHandler {
      *   - Stats (percentage + damage): Red (0xFF3333)
      */
     private fun ChatPacketEvent.formatDamageStats(cleanValue: String, strippedValue: String) {
-        hideMessage() // Hide the original message
+        hideMessage()
         
         // Parse the damage stat line
         // Pattern: "     percentage (damage)      medal username     "
@@ -163,56 +220,32 @@ object BossDefeatHandler {
             val username = parts.drop(3).joinToString(" ") // e.g., "NoWayItzJoey" (handles names with spaces)
             
             // Determine player name color based on medal (using Color class)
-            val nameColorRgb = when (medal) {
-                "𕑱" -> Color(0xFFD700).rgba // Gold (1st place)
-                "𕑰" -> Color(0xC0C0C0).rgba // Silver (2nd place)
-                "𕑩" -> Color(0x895129).rgba // Bronze (3rd place)
-                else -> null // Light gray (4th+ place - use default §7)
+            val nameColor = when (medal) {
+                "𕑱" -> "<#FFD700>" // Gold
+                "𕑰" -> "<#C0C0C0>" // Silver
+                "𕑩" -> "<#895129>" // Bronze
+                else -> "<gray>" // Gray (4th+ place - use default <gray>)
             }
             
             // Damage color (red)
-            val damageColorRgb = Color(0xFF3333).rgba
+            val damageColor = "<#FF3333>"
             
             // Build the formatted string first for centering
             val plainText = "$medal $username — $percentage $damage"
-            val centeredSpaces = getCenteredText(plainText).takeWhile { it == ' ' }
+            val spaces = getCenteredText(plainText).takeWhile { it == ' ' }
             
             // Build the message as a Component with proper colors
-            val messageComponent = Component.literal(centeredSpaces)
+            val mmString = "$spaces$nameColor$medal $username<reset> <dark_gray>—</dark_gray> $damageColor$percentage $damage<reset>"
             
             // Add medal with same color as username
-            if (nameColorRgb != null) {
-                messageComponent.append(Component.literal("$medal ").withStyle { style ->
-                    style.withColor(net.minecraft.network.chat.TextColor.fromRgb(nameColorRgb))
-                })
-            } else {
-                messageComponent.append(Component.literal("§7$medal ")) // Light gray fallback
-            }
-            
-            // Add username with color
-            if (nameColorRgb != null) {
-                messageComponent.append(Component.literal(username).withStyle { style ->
-                    style.withColor(net.minecraft.network.chat.TextColor.fromRgb(nameColorRgb))
-                })
-            } else {
-                messageComponent.append(Component.literal("§7$username")) // Light gray fallback
-            }
-            
-            // Add separator and stats
-            messageComponent
-                .append(Component.literal(" §8—")) // Dark gray dash
-                .append(Component.literal(" $percentage $damage").withStyle { style ->
-                    style.withColor(net.minecraft.network.chat.TextColor.fromRgb(damageColorRgb))
-                })
-            
-            // Send the component
-            hideMessage()
             Melinoe.mc.execute {
-                Melinoe.mc.gui?.chat?.addMessage(messageComponent)
+                Melinoe.mc.gui?.chat?.addMessage(mmString.toNative())
             }
         } else {
-            // Fallback: just center the original if parsing fails
-            Message.centeredRaw(cleanValue)
+            val spaces = getCenteredText(strippedValue).takeWhile { it == ' ' }
+            Melinoe.mc.execute {
+                Melinoe.mc.gui?.chat?.addMessage("$spaces$cleanValue".toNative())
+            }
         }
     }
     

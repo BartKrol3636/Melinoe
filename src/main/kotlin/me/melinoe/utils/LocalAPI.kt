@@ -427,6 +427,43 @@ object LocalAPI {
             me.melinoe.events.core.EventBus.post(DungeonChangeEvent(currentDungeon, currentDungeon))
         }
     }
+    
+    /**
+     * Check if player is currently in a dungeon.
+     * @return true if player is in a dungeon, false otherwise
+     */
+    fun isInDungeon(): Boolean {
+        return try {
+            val currentDungeon = DungeonData.findByKey(getCurrentCharacterArea())
+            currentDungeon != null
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * Check if player is currently in the Nexus.
+     * @return true if player is in the Nexus, false otherwise
+     */
+    fun isInNexus(): Boolean {
+        return try {
+            getCurrentCharacterArea() == "The Nexus"
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * Check if player is currently in the Realm.
+     * @return true if player is in the realm, false otherwise
+     */
+    fun isInRealm(): Boolean {
+        return try {
+            !isInDungeon() && !isInNexus()
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     // Getters
     fun getCurrentCharacterType(): String = currentCharacterType

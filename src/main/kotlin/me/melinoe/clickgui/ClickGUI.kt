@@ -34,7 +34,7 @@ object ClickGUI : Screen(Component.literal("Click GUI")) {
         for (category in visibleCategories) add(Panel(category))
     }
 
-    private var openAnim = EaseOutAnimation(500)
+    private var openAnim = EaseOutAnimation(250)
     val gray38 = Colors.gray38
     val gray26 = Colors.gray26
 

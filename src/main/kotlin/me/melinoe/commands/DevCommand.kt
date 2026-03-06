@@ -4,8 +4,9 @@ import com.github.stivais.commodore.Commodore
 import com.github.stivais.commodore.utils.GreedyString
 import me.melinoe.Melinoe
 import me.melinoe.features.impl.ClickGUIModule
+import me.melinoe.features.impl.visual.dungeontimer.GradientTextBuilder
+import me.melinoe.features.impl.visual.dungeontimer.MessageFormatter
 import me.melinoe.features.impl.visual.dungeontimer.PityCounterConfig
-import me.melinoe.features.impl.visual.dungeontimer.TimerModule
 import me.melinoe.features.impl.visual.dungeontimer.TimerState
 import me.melinoe.utils.*
 import me.melinoe.utils.data.BossData
@@ -20,6 +21,7 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import net.minecraft.network.chat.Component
 import kotlin.random.Random
 
 val devCommand = Commodore("melinoedev", "mdev") {
@@ -32,13 +34,13 @@ val devCommand = Commodore("melinoedev", "mdev") {
         }
         Message.dev("<gray>Use <gold>/mdev help <gray>for available commands")
     }
-
+    
     literal("help").runs {
         if (!ClickGUIModule.devMode) {
             Message.error("Dev mode is disabled. Enable it in ClickGUI settings.")
             return@runs
         }
-
+        
         Message.dev("""
             <gray>Dev Command Help:
             <dark_gray><bold>›</bold> <gold>/mdev itemid <dark_gray>- <gray>Shows item ID and model data of held item
@@ -50,12 +52,12 @@ val devCommand = Commodore("melinoedev", "mdev") {
             <dark_gray>  Examples: <gray>raphael, trueseraph, voidedomnipotent
         """.trimIndent())
     }
-
+    
     literal("testbag").executable {
         param("type") {
             suggests { listOf("bloodshot", "unholy", "voidbound", "royal", "companion", "event") }
         }
-
+        
         runs { bagType: String ->
             if (!ClickGUIModule.devMode) {
                 Message.error("Dev mode is disabled. Enable it in ClickGUI settings.")
@@ -66,8 +68,7 @@ val devCommand = Commodore("melinoedev", "mdev") {
                 Message.error("Player not found")
                 return@runs
             }
-
-            // Create the appropriate item stack with the correct model path for the totem animation
+            
             val itemStack = when (bagType.lowercase()) {
                 "bloodshot" -> {
                     val stack = ItemStack(Items.STICK)
@@ -101,13 +102,13 @@ val devCommand = Commodore("melinoedev", "mdev") {
                 }
                 else -> null
             }
-
+            
             // Trigger the totem animation if we have an item
             // The GameRendererMixin will detect the animation and call the appropriate handler
             if (itemStack != null) {
                 Melinoe.mc.gameRenderer.displayItemActivation(itemStack)
                 Melinoe.mc.particleEngine.createTrackingEmitter(player, ParticleTypes.TOTEM_OF_UNDYING, 30)
-
+                
                 // Show confirmation message
                 when (bagType.lowercase()) {
                     "bloodshot" -> {
@@ -141,7 +142,7 @@ val devCommand = Commodore("melinoedev", "mdev") {
             }
         }
     }
-
+    
     literal("testboss").executable {
         param("boss") {
             suggests {
@@ -151,7 +152,7 @@ val devCommand = Commodore("melinoedev", "mdev") {
                     "chronos", "warden", "herald", "reaper", "defender", "asmodeus")
             }
         }
-
+        
         runs { bossName: String ->
             if (!ClickGUIModule.devMode) {
                 Message.error("Dev mode is disabled. Enable it in ClickGUI settings.")
@@ -162,22 +163,21 @@ val devCommand = Commodore("melinoedev", "mdev") {
                 Message.error("Player not found")
                 return@runs
             }
-
-            // Map common names to proper boss names
+            
             val properBossName = when (bossName.lowercase().replace(" ", "")) {
                 "trueseraph" -> "True Seraph"
                 "trueophan" -> "True Ophan"
                 "voidedomnipotent" -> "Voided Omnipotent"
                 else -> bossName.replaceFirstChar { it.uppercase() }
             }
-
+            
             // Simulate boss defeat
             BagTracker.onBossDefeat(properBossName)
-
+            
             val totalRuns = TypeSafeDataAccess.get(TrackingKey.LifetimeStat.TotalRuns) ?: 0
             Message.dev("<gray>Simulated boss defeat: <light_purple>$properBossName")
             Message.dev("  <dark_gray>› <gray>Total runs: <aqua>$totalRuns")
-
+            
             // Show pity counters for all items this boss can drop
             val boss = BossData.findByKey(properBossName)
             if (boss != null && boss.items.isNotEmpty()) {
@@ -192,7 +192,7 @@ val devCommand = Commodore("melinoedev", "mdev") {
             }
         }
     }
-
+    
     literal("itemid").runs {
         if (!ClickGUIModule.devMode) {
             Message.error("Dev mode is disabled. Enable it in ClickGUI settings.")
@@ -203,48 +203,48 @@ val devCommand = Commodore("melinoedev", "mdev") {
             Message.error("Player not found")
             return@runs
         }
-
+        
         val heldItem = player.mainHandItem
         if (heldItem.isEmpty) {
             Message.error("You must be holding an item!")
             return@runs
         }
-
+        
         // Get the item's base ID
         val itemId = BuiltInRegistries.ITEM.getKey(heldItem.item).toString()
-
+        
         // Get custom model data if present
         val customModel = heldItem.get(DataComponents.ITEM_MODEL)
-
+        
         // Get plain name (no formatting, but keeps Unicode)
         val plainName = ItemUtils.getPlainName(heldItem)
-
+        
         // Get display name without Unicode characters
         val displayName = ItemUtils.getDisplayName(heldItem)
-
+        
         // Extract Unicode character from plain name
         val unicodeChar = if (plainName.length >= 2) {
             plainName.substring(1, plainName.length - 1)
         } else {
             null
         }
-
+        
         // Check if this matches an ItemType
         val itemType = ItemUtils.ItemType.fromItemStack(heldItem)
-
+        
         // Parse range from lore if available
         val parsedRange = ItemUtils.parseItemRange(heldItem)
-
-        // Build the message dynamically with MiniMessage tags
+        
+        // Build the message dynamically
         val message = buildString {
             append("<gray>Item ID Information\n")
             append("<dark_gray><bold>›</bold> <reset><gold>Display Name: <white>$displayName\n")
             append("<dark_gray><bold>›</bold> <reset><gold>Base ID: <white>$itemId\n")
-
+            
             // Show Unicode character info
             if (!unicodeChar.isNullOrEmpty()) {
                 append("<dark_gray><bold>›</bold> <reset><gold>Unicode Char: <white>$unicodeChar\n")
-
+                
                 // Show Unicode escape sequence (properly handle surrogate pairs)
                 val codePoints = unicodeChar.codePoints().toArray()
                 val escapeSequence = if (codePoints.size == 1 && codePoints[0] > 0xFFFF) {
@@ -261,12 +261,12 @@ val devCommand = Commodore("melinoedev", "mdev") {
                 }
                 append("<dark_gray><bold>›</bold> <reset><gold>Unicode Escape: <white>$escapeSequence\n")
             }
-
+            
             // Show parsed range from lore
             if (parsedRange > 0) {
                 append("<dark_gray><bold>›</bold> <reset><gold>Lore Range: <green>${parsedRange}f\n")
             }
-
+            
             // Show ItemType match status
             if (itemType != null) {
                 append("<dark_gray><bold>›</bold> <reset><gold>ItemType: <green>${itemType.name}\n")
@@ -275,12 +275,12 @@ val devCommand = Commodore("melinoedev", "mdev") {
             } else {
                 append("<dark_gray><bold>›</bold> <reset><gold>ItemType: <gray>Not found\n")
             }
-
+            
             // Show custom model info
             if (customModel != null) {
                 append("<dark_gray><bold>›</bold> <reset><gold>Custom Model: <white>$customModel\n")
             }
-
+            
             // Generate code snippets for ItemUtils if not already added
             if (itemType == null && !unicodeChar.isNullOrEmpty()) {
                 // Generate enum name suggestion
@@ -302,7 +302,7 @@ val devCommand = Commodore("melinoedev", "mdev") {
                 } else {
                     "NEW_ITEM"
                 }
-
+                
                 // Show simplified message with enum name and unicode
                 val codePoints = unicodeChar.codePoints().toArray()
                 val escapeSequence = if (codePoints.size == 1 && codePoints[0] > 0xFFFF) {
@@ -320,39 +320,39 @@ val devCommand = Commodore("melinoedev", "mdev") {
                 append("\n<green>✔ Item matched with utils")
             }
         }
-
-        Message.dev(message.toString())
+        
+        Message.dev(message)
     }
-
+    
     literal("simulate").executable {
         param("dungeon") {
             suggests { DungeonData.entries.map { it.name.lowercase() } }
         }
-
+        
         runs { dungeonName: String ->
             if (!ClickGUIModule.devMode) {
                 Message.error("Dev mode is disabled. Enable it in ClickGUI settings.")
                 return@runs
             }
-            // Find the dungeon by name (case-insensitive)
+            
             val dungeon = DungeonData.entries.find {
                 it.name.equals(dungeonName, ignoreCase = true)
             }
-
+            
             if (dungeon == null) {
                 Message.error("Unknown dungeon: $dungeonName")
                 return@runs
             }
-
+            
             val player = Melinoe.mc.player
             if (player == null) {
                 Message.error("Player not found")
                 return@runs
             }
-
+            
             // Check if this is a split dungeon (Rustborn Kingdom or Celestial's Province)
             val isSplitDungeon = dungeon.equalsOneOf(DungeonData.RUSTBORN_KINGDOM, DungeonData.CELESTIALS_PROVINCE)
-
+            
             if (isSplitDungeon) {
                 // Simulate split dungeon with multiple bosses
                 simulateSplitDungeon(dungeon, player)
@@ -362,12 +362,34 @@ val devCommand = Commodore("melinoedev", "mdev") {
             }
         }
     }
-
+    
     literal("copy").runs { greedyString: GreedyString ->
         setClipboardContent(greedyString.string)
         Message.success("Copied to clipboard!")
     }
+    
+}
 
+/**
+ * Helper to safely center a Component utilizing string lengths to bypass tag calculation bugs.
+ */
+private fun sendCenteredComponent(component: Component) {
+    val plainText = component.string.noControlCodes
+    val spaces = getCenteredText(plainText).takeWhile { it == ' ' }
+    Melinoe.mc.execute {
+        Melinoe.mc.gui?.chat?.addMessage(Component.literal(spaces).append(component))
+    }
+}
+
+/**
+ * Helper to safely center a MiniMessage string
+ */
+private fun sendCenteredMM(mmString: String) {
+    val plainText = mmString.replace(Regex("<[^>]*>"), "").noControlCodes
+    val spaces = getCenteredText(plainText).takeWhile { it == ' ' }
+    Melinoe.mc.execute {
+        Melinoe.mc.gui?.chat?.addMessage("$spaces$mmString".toNative())
+    }
 }
 
 /**
@@ -376,10 +398,9 @@ val devCommand = Commodore("melinoedev", "mdev") {
 private fun simulateRegularDungeon(dungeon: DungeonData, player: LocalPlayer) {
     // Generate random time between 1-10 minutes
     val randomTime = Random.nextFloat() * 540f + 60f // 60-600 seconds (1-10 minutes)
-
+    
     // Get current PB (if exists)
     val currentPB = PersonalBestManager.getDungeonPersonalBest(dungeon)
-
     // Randomly decide if this is a new PB (50% chance if PB exists, always true if no PB)
     val isNewPB = if (currentPB == -1f) {
         true
@@ -396,33 +417,36 @@ private fun simulateRegularDungeon(dungeon: DungeonData, player: LocalPlayer) {
         currentPB + (Random.nextFloat() * 60f + 1f) // 1-61 seconds slower
     } else {
         randomTime
-    }.coerceAtLeast(1f) // Ensure time is at least 1 second
-
-    // Show dungeon name with gradient header (centered, raw, no watermark)
-    TimerModule.showSimulatedHeader(dungeon)
-
+    }.coerceAtLeast(1f)
+    
+    // Layout
+    Message.separator()
+    
+    val headerComponent = GradientTextBuilder.buildGradientText(dungeon.areaName, dungeon.dungeonType)
+    sendCenteredComponent(headerComponent)
+    
     // Show pity counter if applicable (centered)
     val pityLine = buildPityCounterLine(dungeon, dungeon.finalBoss)
     if (pityLine.isNotEmpty()) {
         Message.centeredRaw(pityLine)
     }
-
-    // Build and display the completion message (centered, raw, no watermark)
-    TimerModule.showSimulatedCompletionMessage(
-        dungeon,
-        simulatedTime,
-        currentPB,
-        isNewPB
-    )
-
-    // Add separator line after completion message
+    
+    // Completion messag
+    val compMsg = MessageFormatter.formatCompletionMessage(dungeon, simulatedTime, currentPB, isNewPB)
+    sendCenteredComponent(compMsg)
+    
     Message.separator()
-
+    
+    // Simulate Leaderboard damage stat
+    sendCenteredMM("<#FFD700>𕑱 ${player.scoreboardName}<reset> <dark_gray>—</dark_gray> <#FF3333>100.0% (5420)<reset>")
+    
+    Message.separator()
+    
     // Send dev confirmation
     val timeStr = PersonalBestManager.formatTimeWithDecimals(simulatedTime)
     val pbStr = if (currentPB == -1f) "None" else PersonalBestManager.formatTimeWithDecimals(currentPB)
     val statusStr = if (isNewPB) "<green><bold>NEW PB!</bold>" else "<red><bold>Not PB</bold>"
-
+    
     Message.dev("<gray>Simulated <gold>${dungeon.areaName}<gray> completion: <aqua>$timeStr <dark_gray>(PB: $pbStr) <reset>$statusStr")
 }
 
@@ -430,7 +454,6 @@ private fun simulateRegularDungeon(dungeon: DungeonData, player: LocalPlayer) {
  * Simulates a split dungeon completion (Rustborn Kingdom or Celestial's Province)
  */
 private fun simulateSplitDungeon(dungeon: DungeonData, player: LocalPlayer) {
-    // Get the specific bosses for this split dungeon
     val bosses = when (dungeon) {
         DungeonData.RUSTBORN_KINGDOM -> {
             // Rustborn Kingdom: Valerion, Nebula, Ophanim (final)
@@ -445,55 +468,60 @@ private fun simulateSplitDungeon(dungeon: DungeonData, player: LocalPlayer) {
             return
         }
     }
-
+    
     var totalTime = 0f
     val bossResults = mutableListOf<String>()
     val bossDefeats = mutableListOf<TimerState.BossDefeat>()
-
+    
     // Simulate each boss defeat
     for ((index, boss) in bosses.withIndex()) {
         // Generate random split time (30-180 seconds per boss)
         val splitTime = Random.nextFloat() * 150f + 30f
         totalTime += splitTime
-
+        
         // Get current PB for this boss
         val currentPB = PersonalBestManager.getBossPersonalBest(boss)
-
+        
         // Randomly decide if this is a new PB
         val isNewPB = if (currentPB == -1f) {
             Random.nextBoolean() // 50% chance even for first time
         } else {
             Random.nextBoolean()
         }
-
+        
         bossDefeats.add(TimerState.BossDefeat(boss, splitTime, isNewPB, currentPB))
-
+        
         val newPbString = if (isNewPB) "<green><bold>NEW PB!</bold><reset>" else "<red><bold>Not PB</bold><reset>"
         bossResults.add("${boss.label}: ${PersonalBestManager.formatTimeWithDecimals(splitTime)} $newPbString")
-
+        
         // For intermediate bosses (not the final boss), show the mini split message
         if (index < bosses.size - 1) {
-            // Show dungeon name with gradient header (centered, raw, no watermark)
-            TimerModule.showSimulatedHeader(dungeon)
-
+            Message.separator()
+            
+            val headerComponent = GradientTextBuilder.buildGradientText(dungeon.areaName, dungeon.dungeonType)
+            sendCenteredComponent(headerComponent)
+            
             // Add pity counter line for this specific boss (centered)
             val pityLine = buildPityCounterLine(dungeon, boss)
             if (pityLine.isNotEmpty()) {
                 Message.centeredRaw(pityLine)
             }
-
+            
             // Show boss split message
-            TimerModule.showSimulatedBossSplitMessage(dungeon, boss, splitTime, currentPB, isNewPB)
-
-            // Add divider after boss split message
+            val splitMsg = MessageFormatter.formatSplitMessage(dungeon, boss, splitTime, currentPB, isNewPB)
+            sendCenteredComponent(splitMsg)
+            
+            Message.separator()
+            sendCenteredMM("<#FFD700>𕑱 ${player.scoreboardName}<reset> <dark_gray>—</dark_gray> <#FF3333>100.0% (5420)<reset>")
             Message.separator()
         }
     }
-
-    // Now show the final completion summary with all bosses
-    // Show dungeon name with gradient header (centered, raw, no watermark)
-    TimerModule.showSimulatedHeader(dungeon)
-
+    
+    Message.separator()
+    
+    val headerComponent = GradientTextBuilder.buildGradientText(dungeon.areaName, dungeon.dungeonType)
+    sendCenteredComponent(headerComponent)
+    
     // Show pity counter only for the final boss (last defeat in the list)
     if (bossDefeats.isNotEmpty()) {
         val finalBoss = bossDefeats.last().boss
@@ -502,15 +530,17 @@ private fun simulateSplitDungeon(dungeon: DungeonData, player: LocalPlayer) {
             Message.centeredRaw(pityLine)
         }
     }
-
+    
     // Show all boss defeats in the final summary
     for (defeat in bossDefeats) {
-        TimerModule.showSimulatedBossSplitSummaryMessage(defeat, dungeon)
+        val sumMsg = MessageFormatter.formatSplitSummaryMessage(dungeon, defeat.boss, defeat.splitTime, defeat.oldPB, defeat.wasNewPB)
+        sendCenteredComponent(sumMsg)
     }
-
-    // Add separator line after all split messages
+    
     Message.separator()
-
+    sendCenteredMM("<#FFD700>𕑱 ${player.scoreboardName}<reset> <dark_gray>—</dark_gray> <#FF3333>100.0% (5420)<reset>")
+    Message.separator()
+    
     // Send dev confirmation
     val totalTimeStr = PersonalBestManager.formatTimeWithDecimals(totalTime)
     Message.dev("<gray>Simulated <gold>${dungeon.areaName}<gray> split completion: <aqua>$totalTimeStr <gray>total")
@@ -520,7 +550,7 @@ private fun simulateSplitDungeon(dungeon: DungeonData, player: LocalPlayer) {
 }
 
 /**
- * Builds the pity counter line for specific dungeons (NOT centered - centering handled by Message.centeredRaw)
+ * Builds the pity counter line for specific dungeons
  */
 private fun buildPityCounterLine(dungeon: DungeonData, boss: BossData): String {
     return PityCounterConfig.buildPityLine(dungeon, boss)

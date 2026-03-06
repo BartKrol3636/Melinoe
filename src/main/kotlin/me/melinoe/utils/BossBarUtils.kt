@@ -58,23 +58,10 @@ object BossBarUtils {
     }
 
     /**
-     * Check if player is currently in a dungeon.
-     * @return true if player is in a dungeon, false otherwise
-     */
-    fun isInDungeon(): Boolean {
-        return try {
-            val currentDungeon = DungeonData.findByKey(LocalAPI.getCurrentCharacterArea())
-            currentDungeon != null
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    /**
      * Check if player is in dungeon AND has active boss bar.
      * @return true if both conditions are met (player should not open menus)
      */
     fun shouldBlockMenus(): Boolean {
-        return isInDungeon() && hasActiveBossBar()
+        return LocalAPI.isInDungeon() && hasActiveBossBar()
     }
 }

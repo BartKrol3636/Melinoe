@@ -482,21 +482,16 @@ object BagTracker {
                 "<#555555>",
                 "RUNE"
             )
-            else -> RarityStyle(
-                0xFFFFFF,
-                "<bold><white>${item.rarity.name}</bold>",
-                "<white>",
-                item.rarity.name
-            )
         }
 
         val lootBoostStr = if (lootboost > 0) " <yellow>[+$lootboost% LB]" else ""
         val m = Message.Colors.MUTED
+        val area = if (LocalAPI.isInDungeon()) LocalAPI.getCurrentCharacterArea() else BossData.findByItem(item)?.label ?: "Unknown"
 
         // Build message using MiniMessage
-        var message = "${style.prefix} $m- <gray>Dropped <underlined>${style.itemNameColor}${item.displayName}</underlined> <gray>at <yellow>$pityCount</yellow> <gray>from ${style.itemNameColor} <gray>pity$lootBoostStr"
+        var message = "${style.prefix} $m- <gray>Dropped <underlined>${style.itemNameColor}${item.displayName}</underlined> <gray>at <yellow>$pityCount</yellow> <gray>pity from ${style.itemNameColor}$area$lootBoostStr"
         if (PityCounterModule.showAnnounceButton) {
-            val shareText = "[${item.rarity}] Dropped ${item.displayName} at ${pityCount} pity!"
+            val shareText = "[${item.rarity}] Dropped ${item.displayName} at ${pityCount} pity from $area!"
 
             message += " <click:suggest_command:'${shareText}'><hover:show_text:\"<gray>Click to share in chat!</gray>\"><gray><b>⧉</b></gray></hover></click>"
         }
