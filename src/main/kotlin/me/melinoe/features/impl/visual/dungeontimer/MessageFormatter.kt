@@ -3,12 +3,18 @@ package me.melinoe.features.impl.visual.dungeontimer
 import me.melinoe.utils.PersonalBestManager
 import me.melinoe.utils.data.BossData
 import me.melinoe.utils.data.DungeonData
+import me.melinoe.utils.toNative
 import net.minecraft.network.chat.Component
 
 /**
  * Formats dungeon completion and split messages with personal best comparisons.
  */
 object MessageFormatter {
+    
+    /**
+     * Helper to convert an integer color to a MiniMessage hex tag
+     */
+    private fun Int.toHexTag(): String = "<#${String.format("%06X", this and 0xFFFFFF)}>"
     
     /**
      * Formats a dungeon completion message with boss defeat and PB comparison.
@@ -19,19 +25,14 @@ object MessageFormatter {
         oldPB: Float,
         isNewPB: Boolean
     ): Component {
-        val bossColor = GradientTextBuilder.getBrightColor(dungeon.dungeonType)
-        val timeColor = GradientTextBuilder.getDarkColor(dungeon.dungeonType)
+        val bossColor = GradientTextBuilder.getBrightColor(dungeon.dungeonType).toHexTag()
+        val timeColor = GradientTextBuilder.getDarkColor(dungeon.dungeonType).toHexTag()
         
-        return Component.empty()
-            .append(Component.literal("${Constants.ICON_SKULL} §7Defeated "))
-            .append(Component.literal(dungeon.finalBoss.label).withStyle { style ->
-                style.withColor(net.minecraft.network.chat.TextColor.fromRgb(bossColor))
-            })
-            .append(Component.literal("§7 in "))
-            .append(Component.literal(PersonalBestManager.formatTimeWithDecimals(time)).withStyle { style ->
-                style.withColor(net.minecraft.network.chat.TextColor.fromRgb(timeColor))
-            })
-            .append(formatPBComparison(time, oldPB, isNewPB))
+        val bossName = dungeon.finalBoss.label
+        val timeStr = PersonalBestManager.formatTimeWithDecimals(time)
+        val pbString = getPBComparisonString(dungeon.areaName, time, oldPB, isNewPB)
+        
+        return "${Constants.ICON_SKULL} <gray>Defeated $bossColor$bossName <gray>in $timeColor$timeStr$pbString".toNative()
     }
     
     /**
@@ -44,19 +45,13 @@ object MessageFormatter {
         oldPB: Float,
         isNewPB: Boolean
     ): Component {
-        val bossColor = GradientTextBuilder.getBrightColor(dungeon.dungeonType)
-        val timeColor = GradientTextBuilder.getDarkColor(dungeon.dungeonType)
+        val bossColor = GradientTextBuilder.getBrightColor(dungeon.dungeonType).toHexTag()
+        val timeColor = GradientTextBuilder.getDarkColor(dungeon.dungeonType).toHexTag()
         
-        return Component.empty()
-            .append(Component.literal("${Constants.ICON_SPLIT} Split: §7Defeated "))
-            .append(Component.literal(boss.label).withStyle { style ->
-                style.withColor(net.minecraft.network.chat.TextColor.fromRgb(bossColor))
-            })
-            .append(Component.literal("§7 in "))
-            .append(Component.literal(PersonalBestManager.formatTimeWithDecimals(time)).withStyle { style ->
-                style.withColor(net.minecraft.network.chat.TextColor.fromRgb(timeColor))
-            })
-            .append(formatPBComparison(time, oldPB, isNewPB))
+        val timeStr = PersonalBestManager.formatTimeWithDecimals(time)
+        val pbString = getPBComparisonString(dungeon.areaName, time, oldPB, isNewPB)
+        
+        return "${Constants.ICON_SPLIT} Split: <gray>Defeated $bossColor${boss.label} <gray>in $timeColor$timeStr$pbString".toNative()
     }
     
     /**
@@ -69,42 +64,56 @@ object MessageFormatter {
         oldPB: Float,
         wasNewPB: Boolean
     ): Component {
-        val bossColor = GradientTextBuilder.getBrightColor(dungeon.dungeonType)
-        val timeColor = GradientTextBuilder.getDarkColor(dungeon.dungeonType)
+        val bossColor = GradientTextBuilder.getBrightColor(dungeon.dungeonType).toHexTag()
+        val timeColor = GradientTextBuilder.getDarkColor(dungeon.dungeonType).toHexTag()
         
-        return Component.empty()
-            .append(Component.literal("${Constants.ICON_SKULL} §7Defeated "))
-            .append(Component.literal(boss.label).withStyle { style ->
-                style.withColor(net.minecraft.network.chat.TextColor.fromRgb(bossColor))
-            })
-            .append(Component.literal("§7 in "))
-            .append(Component.literal(PersonalBestManager.formatTimeWithDecimals(splitTime)).withStyle { style ->
-                style.withColor(net.minecraft.network.chat.TextColor.fromRgb(timeColor))
-            })
-            .append(formatPBComparison(splitTime, oldPB, wasNewPB))
+        val timeStr = PersonalBestManager.formatTimeWithDecimals(splitTime)
+        val pbString = getPBComparisonString(dungeon.areaName,  splitTime, oldPB, wasNewPB)
+        
+        return "${Constants.ICON_SKULL} <gray>Defeated $bossColor${boss.label} <gray>in $timeColor$timeStr$pbString".toNative()
     }
     
     /**
      * Formats the personal best comparison section of a message.
      */
-    private fun formatPBComparison(time: Float, oldPB: Float, isNewPB: Boolean): Component {
+    private fun getPBComparisonString(dungeon: String, time: Float, oldPB: Float, isNewPB: Boolean): String {
         if (isNewPB) {
-            val improvement = if (oldPB != -1f) {
+            val timeStr = PersonalBestManager.formatTimeWithDecimals(time)
+            val hasOldPB = oldPB != -1f
+            
+            val shareText: String
+            val improveText: String
+            
+            if (hasOldPB) {
                 val diff = time - oldPB
                 val diffStr = PersonalBestManager.formatTimeDifferenceWithDecimals(diff)
-                " §8(§a$diffStr§8)"
-            } else ""
-            return Component.literal(" ${Constants.ICON_FIRE} §6§lNEW RECORD!$improvement")
+                val oldPBStr = PersonalBestManager.formatTimeWithDecimals(oldPB)
+                
+                shareText = "NEW RECORD! Completed $dungeon in $timeStr! (Old: $oldPBStr | $diffStr)"
+                improveText = " <dark_gray>(<green>$diffStr<dark_gray>)"
+            } else {
+                shareText = "NEW RECORD! Completed $dungeon in $timeStr!"
+                improveText = ""
+            }
+            
+            val safeShareText = shareText.replace("'", "\\'")
+            
+            val shareButton = " <click:suggest_command:'$safeShareText'><hover:show_text:\"<gray>Click to share in chat!</gray>\"><gray><b>⧉</b></gray></hover></click>"
+            val improvement = "$improveText$shareButton"
+            
+            return " ${Constants.ICON_FIRE} <gold><bold>NEW RECORD!</bold></gold>$improvement"
         }
         
         if (oldPB != -1f) {
             val difference = time - oldPB
-            val color = if (difference > 0) "§c" else "§a"
+            val diffColor = if (difference > 0) "<red>" else "<green>"
+            
             val oldPBStr = PersonalBestManager.formatTimeWithDecimals(oldPB)
             val diffStr = PersonalBestManager.formatTimeDifferenceWithDecimals(difference)
-            return Component.literal(" §8(${Constants.ICON_STAR} §7$oldPBStr §8| $color$diffStr§8)")
+            
+            return " <dark_gray>(${Constants.ICON_STAR} <gray>$oldPBStr <dark_gray>| $diffColor$diffStr<dark_gray>)"
         }
         
-        return Component.empty()
+        return ""
     }
 }
