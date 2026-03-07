@@ -106,6 +106,8 @@ class HUDSetting(
         addProperty("y", value.y)
         addProperty("scale", value.scale)
         addProperty("enabled", value.enabled)
+        addProperty("anchorRight", value.anchorRight)
+        addProperty("anchorBottom", value.anchorBottom)
     }
 
     override fun read(element: JsonElement, gson: Gson) {
@@ -114,5 +116,7 @@ class HUDSetting(
         value.y = element.get("y")?.asInt ?: value.y
         value.scale = element.get("scale")?.asFloat ?: value.scale
         value.enabled = if (toggleable) element.get("enabled")?.asBoolean ?: value.enabled else true
+        value.anchorRight = element.get("anchorRight")?.asBoolean ?: value.anchorRight
+        value.anchorBottom = element.get("anchorBottom")?.asBoolean ?: value.anchorBottom
     }
 }

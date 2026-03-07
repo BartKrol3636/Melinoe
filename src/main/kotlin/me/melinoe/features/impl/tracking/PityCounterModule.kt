@@ -235,7 +235,7 @@ object PityCounterModule : Module(
             getItemsToDisplay()
         }
         
-        if (items.isEmpty() && !example) return@render Pair(100, 50)
+        if (items.isEmpty()) return@render Pair(100, 50)
         
         // Get boss name for title
         val bossName = if (example) {

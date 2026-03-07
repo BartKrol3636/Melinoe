@@ -25,8 +25,12 @@ object HudManager : Screen(Component.literal("HUD Manager")) {
     override fun init() {
         for (hud in hudSettingsCache) {
             if (hud.isEnabled) {
-                hud.value.x = hud.value.x.coerceIn(0, (Melinoe.mc.window.screenWidth - (hud.value.width * hud.value.scale)).toInt())
-                hud.value.y = hud.value.y.coerceIn(0, (Melinoe.mc.window.screenHeight - (hud.value.height * hud.value.scale)).toInt())
+                val sw = Melinoe.mc.window.screenWidth
+                val sh = Melinoe.mc.window.screenHeight
+                val clampedScreenX = hud.value.screenX.coerceIn(0, (sw - (hud.value.width * hud.value.scale)).toInt())
+                val clampedScreenY = hud.value.screenY.coerceIn(0, (sh - (hud.value.height * hud.value.scale)).toInt())
+                hud.value.setScreenX(clampedScreenX)
+                hud.value.setScreenY(clampedScreenY)
             }
         }
         super.init()
@@ -36,8 +40,15 @@ object HudManager : Screen(Component.literal("HUD Manager")) {
         super.render(context, mouseX, mouseY, deltaTicks)
 
         dragging?.let {
-            it.x = (melinoeMouseX + deltaX).coerceIn(0f, (Melinoe.mc.window.screenWidth - (it.width * it.scale))).toInt()
-            it.y = (melinoeMouseY + deltaY).coerceIn(0f, (Melinoe.mc.window.screenHeight - (it.height * it.scale))).toInt()
+            val sw = Melinoe.mc.window.screenWidth
+            val sh = Melinoe.mc.window.screenHeight
+            val newScreenX = (melinoeMouseX + deltaX).coerceIn(0f, (sw - (it.width * it.scale))).toInt()
+            val newScreenY = (melinoeMouseY + deltaY).coerceIn(0f, (sh - (it.height * it.scale))).toInt()
+            // Update anchors based on which half the element is on
+            it.anchorRight = newScreenX + (it.width * it.scale) / 2f > sw / 2f
+            it.anchorBottom = newScreenY + (it.height * it.scale) / 2f > sh / 2f
+            it.setScreenX(newScreenX)
+            it.setScreenY(newScreenY)
         }
 
         context.pose().pushMatrix()
@@ -51,8 +62,8 @@ object HudManager : Screen(Component.literal("HUD Manager")) {
         hudSettingsCache.firstOrNull { it.isEnabled && it.value.isHovered() }?.let { hoveredHud ->
             context.pose().pushMatrix()
             context.pose().translate(
-                (hoveredHud.value.x + hoveredHud.value.width * hoveredHud.value.scale + 10f),
-                hoveredHud.value.y.toFloat(),
+                (hoveredHud.value.screenX + hoveredHud.value.width * hoveredHud.value.scale + 10f),
+                hoveredHud.value.screenY.toFloat(),
             )
             context.pose().scale(2f, 2f)
             context.drawString(Melinoe.mc.font, hoveredHud.name, 0, 0, Colors.WHITE.rgba)
@@ -76,8 +87,8 @@ object HudManager : Screen(Component.literal("HUD Manager")) {
         hudSettingsCache.firstOrNull { it.isEnabled && it.value.isHovered() }?.let { hovered ->
             dragging = hovered.value
 
-            deltaX = (hovered.value.x - melinoeMouseX)
-            deltaY = (hovered.value.y - melinoeMouseY)
+            deltaX = (hovered.value.screenX - melinoeMouseX)
+            deltaY = (hovered.value.screenY - melinoeMouseY)
             return true
         }
 
@@ -94,10 +105,10 @@ object HudManager : Screen(Component.literal("HUD Manager")) {
             when (keyEvent.key) {
                 GLFW.GLFW_KEY_EQUAL -> hovered.value.scale = (hovered.value.scale + 0.1f).coerceIn(1f, 10f)
                 GLFW.GLFW_KEY_MINUS -> hovered.value.scale = (hovered.value.scale - 0.1f).coerceIn(1f, 10f)
-                GLFW.GLFW_KEY_RIGHT -> hovered.value.x += 10
-                GLFW.GLFW_KEY_LEFT -> hovered.value.x -= 10
-                GLFW.GLFW_KEY_UP -> hovered.value.y -= 10
-                GLFW.GLFW_KEY_DOWN -> hovered.value.y += 10
+                GLFW.GLFW_KEY_RIGHT -> hovered.value.setScreenX(hovered.value.screenX + 10)
+                GLFW.GLFW_KEY_LEFT -> hovered.value.setScreenX(hovered.value.screenX - 10)
+                GLFW.GLFW_KEY_UP -> hovered.value.setScreenY(hovered.value.screenY - 10)
+                GLFW.GLFW_KEY_DOWN -> hovered.value.setScreenY(hovered.value.screenY + 10)
             }
         }
 
