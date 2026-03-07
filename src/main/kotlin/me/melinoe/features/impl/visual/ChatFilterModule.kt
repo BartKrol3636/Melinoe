@@ -27,19 +27,17 @@ object ChatFilterModule : Module(
                 return@on
             }
             
-            // Hide fame gain messages (matches "+1 Fame gained!", "+2 Fame gained!", etc.)
+            // Hide fame gain messages
             if (message.matches(Regex("^\\+\\d+ Fame gained!$"))) {
                 hideMessage()
                 return@on
             }
+            
+            // Hide autosell messages
+            if (message.matches(Regex("^Auto-sell earnings: (.+)$"))) {
+                hideMessage()
+                return@on
+            }
         }
-    }
-
-    override fun onEnable() {
-        super.onEnable()
-    }
-
-    override fun onDisable() {
-        super.onDisable()
     }
 }

@@ -1,12 +1,7 @@
 package me.melinoe.utils
 
 import me.melinoe.Melinoe
-import me.melinoe.events.BossBarUpdateEvent
-import me.melinoe.events.DungeonChangeEvent
-import me.melinoe.events.DungeonEntryEvent
-import me.melinoe.events.DungeonExitEvent
-import me.melinoe.events.PacketEvent
-import me.melinoe.events.TickEvent
+import me.melinoe.events.*
 import me.melinoe.events.core.on
 import me.melinoe.events.core.onReceive
 import me.melinoe.utils.data.DungeonData
@@ -109,11 +104,50 @@ object LocalAPI {
         Melinoe.logger.debug("LocalAPI: Updating with char info: $info")
 
         // Parse character type from format: "(MASTERY)(GAMEMODE) (LEVEL) (CLASS)"
+        // Gives specific colors for group ironmans - utilized for the DiscordRPC Module
         currentCharacterType = when (charInfo[0].substring(2).hashCode()) {
-            880 -> "Normal"
-            881 -> "Hardcore"
-            882 -> "Seasonal"
-            else -> "GHardcore" // 1771717 -> 1771734 inclusive
+            880 -> "normal"
+            881 -> "hardcore_ironman"
+            1771714 -> "black"
+            1771715 -> "blue"
+            1771716 -> "brown"
+            1771717 -> "gray"
+            1771718 -> "green"
+            1771719 -> "light_blue"
+            1771720 -> "light_brown"
+            1771721 -> "light_green"
+            1771722 -> "light_orange"
+            1771723 -> "light_pink"
+            1771724 -> "light_purple"
+            1771725 -> "light_red"
+            1771726 -> "light_yellow"
+            1771727 -> "orange"
+            1771728 -> "pink"
+            1771729 -> "purple"
+            1771730 -> "red"
+            1771731 -> "yellow"
+            1771573 -> "ghardcore_ironman"
+            1771574 -> "gnormal"
+            1771575 -> "gseasonal"
+            1771576 -> "gblack"
+            1771577 -> "gblue"
+            1771578 -> "gbrown"
+            1771579 -> "ggray"
+            1771580 -> "ggreen"
+            1771581 -> "glight_blue"
+            1771582 -> "glight_brown"
+            1771583 -> "glight_green"
+            1771584 -> "glight_orange"
+            1771585 -> "glight_pink"
+            1771586 -> "glight_purple"
+            1771587 -> "glight_red"
+            1771588 -> "glight_yellow"
+            1771589 -> "gorange"
+            1771590 -> "gpink"
+            1771591 -> "gpurple"
+            1771592 -> "gred"
+            1771593 -> "gyellow"
+            else -> "unknown"
         }
 
         try {
@@ -141,6 +175,7 @@ object LocalAPI {
         
         // Only process if we have exactly 5 boss bars
         if (bossBars.size != 5) {
+            currentCharacterFighting = ""
             Melinoe.logger.debug("LocalAPI: Boss bar count is ${bossBars.size}, expected 5 - skipping area parsing")
             return
         }
@@ -154,6 +189,7 @@ object LocalAPI {
         }
         
         if (areaBar == null) {
+            currentCharacterFighting = ""
             Melinoe.logger.debug("LocalAPI: No boss bar found with area name")
             return
         }
@@ -190,6 +226,27 @@ object LocalAPI {
         } ?: bossBars.firstOrNull { it != areaBar && it.name.string.isNotEmpty() } // Fallback: any non-area, non-empty bar
         
         if (bossBar == null) {
+            // Check portal countdown if we just finished a boss
+            if (currentCharacterFighting.isNotEmpty() && lastKnownBoss.isNotEmpty()) {
+                currentPortalCall = when (lastKnownBoss) {
+                    "Chungus" -> "void"
+                    "Illarius" -> "loa"
+                    "Astaroth" -> "shatters"
+                    "Glumi" -> "fungal"
+                    "Lotil" -> "omni"
+                    "Tidol" -> "corsairs"
+                    "Valus" -> "cultists"
+                    "Oozul" -> "chronos"
+                    "Freddy" -> "pizza"
+                    "Anubis" -> "alair"
+                    "Defender" -> "cprov"
+                    else -> ""
+                }
+                if (currentPortalCall.isNotEmpty() && !countdownLock) {
+                    startPortalCountdown()
+                }
+            }
+            currentCharacterFighting = ""
             Melinoe.logger.debug("LocalAPI: No boss bar found")
             return
         }
@@ -203,47 +260,51 @@ object LocalAPI {
         val currentBossHash = bossBar.name.hashCode()
 
         // All updated as of 21th January 2026
-        currentCharacterFighting = when (currentBossHash) {
-            -168181711 -> "Chungus"
-            1368623635 -> "Illarius"
-            -1253632898 -> "Astaroth"
-            -168176906 -> "Glumi"
-            -1254008649 -> "Lotil"
-            1368934038 -> "Tidol"
-            -1622056066 -> "Valus"
-            -1907114029 -> "Oozul"
-            -1343349613 -> "Freddy"
-            -342545608 -> "Anubis"
-            -1240191621 -> "Hollowbane"
-            -1048713371 -> "Claus"
-            1824190226 -> "Shadowflare"
-            -1382454635 -> "Loa"
-            -132746136 -> "Valerion"
-            -829226362 -> "Nebula"
-            -132585649 -> "Ophanim"
-            -708336010 -> "Prismara"
-            -1254007688 -> "Omnipotent"
-            -1621744702 -> "Thalassar"
-            -1643392642 -> "Silex"
-            290925398 -> "Chronos"
-            -422985676 -> "Golden Freddy"
-            -342534076 -> "Kurvaros"
-            -1370656917 -> "Warden"
-            -1370655956 -> "Herald"
-            -1370654995 -> "Reaper"
-            -1370654034 -> "Defender"
-            -1622067598 -> "Asmodeus"
-            -1643406096 -> "Seraphim"
-            -1643245609 -> "True Seraph"
-            -132915272 -> "True Ophan"
-            2131893865 -> "Raphael's Castle"
-            254038329 -> "Raphael"
-            230903377 -> "Sylvaris"
-            -1253581965 -> "Voided Omnipotent"
-            1301379752 -> "Unrest"
-            -828991878 -> "Aetheris"
-            1420701227 -> "Malthar"
-            else -> ""
+        if (currentBossHash == initialHash) {
+            currentCharacterFighting = ""
+        } else {
+            currentCharacterFighting = when (currentBossHash) {
+                -168181711 -> "Chungus"
+                1368623635 -> "Illarius"
+                -1253632898 -> "Astaroth"
+                -168176906 -> "Glumi"
+                -1254008649 -> "Lotil"
+                1368934038 -> "Tidol"
+                -1622056066 -> "Valus"
+                -1907114029 -> "Oozul"
+                -1343349613 -> "Freddy"
+                -342545608 -> "Anubis"
+                -1240191621 -> "Hollowbane"
+                -1048713371 -> "Claus"
+                1824190226 -> "Shadowflare"
+                -1382454635 -> "Loa"
+                -132746136 -> "Valerion"
+                -829226362 -> "Nebula"
+                -132585649 -> "Ophanim"
+                -708336010 -> "Prismara"
+                -1254007688 -> "Omnipotent"
+                -1621744702 -> "Thalassar"
+                -1643392642 -> "Silex"
+                290925398 -> "Chronos"
+                -422985676 -> "Golden Freddy"
+                -342534076 -> "Kurvaros"
+                -1370656917 -> "Warden"
+                -1370655956 -> "Herald"
+                -1370654995 -> "Reaper"
+                -1370654034 -> "Defender"
+                -1622067598 -> "Asmodeus"
+                -1643406096 -> "Seraphim"
+                -1643245609 -> "True Seraph"
+                -132915272 -> "True Ophan"
+                2131893865 -> "Raphael's Castle"
+                254038329 -> "Raphael"
+                230903377 -> "Sylvaris"
+                -1253581965 -> "Voided Omnipotent"
+                1301379752 -> "Unrest"
+                -828991878 -> "Aetheris"
+                1420701227 -> "Malthar"
+                else -> ""
+            }
         }
 
         // Improved system to find HashCodes
@@ -364,6 +425,43 @@ object LocalAPI {
             Melinoe.logger.info("LocalAPI: Dimension changed from '$previousDimension' to '$newDimension' in ${currentDungeon.areaName} - firing DungeonChangeEvent (chain)")
             // Fire a chain event - same dungeon to same dungeon (represents continuing the chain)
             me.melinoe.events.core.EventBus.post(DungeonChangeEvent(currentDungeon, currentDungeon))
+        }
+    }
+    
+    /**
+     * Check if player is currently in a dungeon.
+     * @return true if player is in a dungeon, false otherwise
+     */
+    fun isInDungeon(): Boolean {
+        return try {
+            val currentDungeon = DungeonData.findByKey(getCurrentCharacterArea())
+            currentDungeon != null
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * Check if player is currently in the Nexus.
+     * @return true if player is in the Nexus, false otherwise
+     */
+    fun isInNexus(): Boolean {
+        return try {
+            getCurrentCharacterArea() == "The Nexus"
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * Check if player is currently in the Realm.
+     * @return true if player is in the realm, false otherwise
+     */
+    fun isInRealm(): Boolean {
+        return try {
+            !isInDungeon() && !isInNexus()
+        } catch (e: Exception) {
+            false
         }
     }
 

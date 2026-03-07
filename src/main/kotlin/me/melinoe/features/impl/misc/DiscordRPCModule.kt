@@ -165,19 +165,16 @@ object DiscordRPCModule : Module(
 
             val firstLine = if (firstLineParts.isEmpty()) "Exploring the realm..." else firstLineParts.joinToString(" | ")
             var secondLine = ""
-
+            
             if (showDungeon) {
-                secondLine = if (BossBarUtils.isInDungeon()) {
+                secondLine = if (LocalAPI.isInDungeon()) {
                     val bossName = DungeonData.findByKey(area)?.finalBoss?.label
                     bossName?.let { "Fighting $it" } ?: "In an unknown place"
-                } else if (BossBarUtils.hasActiveBossBar()) {
-                    // Use instantly accurate data for World Bosses if they have an active boss bar on screen
-                    val activeBoss = BossBarUtils.getBossBarMap().values.firstOrNull { it.progress > 0.0f }?.name?.string
-                    activeBoss?.let { "Fighting $it" } ?: "Fighting an unknown boss"
                 } else if (fightingBoss.isNotBlank() && fightingBoss.lowercase() !in listOf("null", "none")) {
-                    // Fallback to local API cache if we aren't picking up a direct boss bar
+                    // Prioritize the exact LocalAPI hash
                     "Fighting $fightingBoss"
                 } else {
+                    // Fall back to the area string once the boss hash is clear
                     when (area) {
                         "The Nexus" -> "Talking with Wumpus..."
                         "Beach" -> "Battling pirates..."
@@ -192,14 +189,14 @@ object DiscordRPCModule : Module(
                         else -> ""
                     }
                 }
-            } else if (showCustom && !customText.isNullOrBlank()) {
+            } else if (showCustom && customText.isNotBlank()) {
                 secondLine = customText
             }
 
             var characterText = "Running on Melinoe!"
             val characterType = LocalAPI.getCurrentCharacterType()
 
-            if (showCharacter && !characterType.isNullOrBlank() && !characterType.equals("null", ignoreCase = true)) {
+            if (showCharacter && characterType.isNotBlank() && !characterType.equals("null", ignoreCase = true)) {
                 val characterTypeName = when (characterType.lowercase()) {
                     "normal", "gnormal" -> "Normal"
                     "seasonal", "gseasonal" -> "Seasonal"
@@ -208,13 +205,13 @@ object DiscordRPCModule : Module(
                 }
 
                 val rawClass = LocalAPI.getCurrentCharacterClass()
-                val charClass = if (rawClass.isNullOrBlank() || rawClass.equals("null", ignoreCase = true)) "Unknown" else rawClass
+                val charClass = if (rawClass.isBlank() || rawClass.equals("null", ignoreCase = true)) "Unknown" else rawClass
                 val level = LocalAPI.getCurrentCharacterLevel()
 
                 characterText = "Playing on a Level $level $characterTypeName $charClass"
             }
 
-            val smallImage = if (showCharacter && !characterType.isNullOrBlank() && !characterType.equals("null", ignoreCase = true)) characterType else "small"
+            val smallImage = if (showCharacter && characterType.isNotBlank() && !characterType.equals("null", ignoreCase = true)) characterType else "small"
 
             val presence = DiscordRichPresence.builder()
                 .name("Telos Realms")
