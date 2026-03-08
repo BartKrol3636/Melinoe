@@ -82,8 +82,8 @@ object ClickGUIModule : Module(
     }
 
     // Update checker integration
-    private const val RELEASE_LINK = "https://github.com/NoWayItzJoey/melinoe/releases/latest"
-    private const val GITHUB_API_URL = "https://api.github.com/repos/NoWayItzJoey/melinoe/releases/latest"
+    private const val RELEASE_LINK = "https://github.com/House-Hades/Melinoe/releases/latest"
+    private const val GITHUB_API_URL = "https://api.github.com/House-Hades/Melinoe/releases/latest"
     private var latestVersionNumber: String? = null
     private var hasSentUpdateMessage = false
     
@@ -206,8 +206,8 @@ object ClickGUIModule : Module(
             .withStyle {
                 it.withColor(net.minecraft.network.chat.TextColor.fromRgb(0x7CFFB2))
                     .withUnderlined(true)
-                    .withClickEvent(ClickEvent.OpenUrl(URI("https://discord.gg/YdQRJt5Z2U")))
-                    .withHoverEvent(HoverEvent.ShowText(Component.literal("Join the melinoe Discord server")))
+                    .withClickEvent(ClickEvent.OpenUrl(URI("https://discord.gg/Nxhmxjt3kR")))
+                    .withHoverEvent(HoverEvent.ShowText(Component.literal("Join the Melinoe Discord server")))
             }
         message.append(discordLink)
         

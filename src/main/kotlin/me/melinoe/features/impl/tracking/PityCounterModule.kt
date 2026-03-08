@@ -1,5 +1,6 @@
 package me.melinoe.features.impl.tracking
 
+import me.melinoe.clickgui.settings.Setting.Companion.withDependency
 import me.melinoe.clickgui.settings.impl.BooleanSetting
 import me.melinoe.clickgui.settings.impl.ColorSetting
 import me.melinoe.clickgui.settings.impl.HUDSetting
@@ -41,7 +42,7 @@ object PityCounterModule : Module(
 ) {
     
     // Toggle to show or hide the HUD
-    private val toggleHud by BooleanSetting("Show HUD", default = true, desc = "Toggle the visibility of the Pity Counter HUD")
+    private val showHud by BooleanSetting("Show HUD", default = true, desc = "Toggle the visibility of the Pity Counter HUD")
     
     // Settings - Color for widget border and title
     private val widgetColor by ColorSetting("Widget Color", Color(0xFF2E8F78.toInt()), desc = "Color for the widget border and title")
@@ -52,8 +53,8 @@ object PityCounterModule : Module(
     // Truncation setting to limit the number of visible characters
     private val maxCharacters by NumberSetting("Max Characters", 15, min = 0, max = 30, desc = "Maximum number of characters for item names (excluding apostrophes)")
     
-    val useCustomMsg by BooleanSetting("Custom Drop", default = true, desc = "Show custom drop messages which include pity")
-    val showAnnounceButton by BooleanSetting("Announce Button", true, desc = "Show the announce button at the end of drop messages")
+    val useCustomMsg by BooleanSetting("Custom Drop Message", default = true, desc = "Show custom drop messages which include pity")
+    val showAnnounceButton by BooleanSetting("Announce Button", true, desc = "Show the announce button at the end of drop messages").withDependency { useCustomMsg }
     
     // Current boss tracking
     private var currentBossData: BossData? = null
@@ -270,7 +271,7 @@ object PityCounterModule : Module(
     ) render@{ example ->
         if (!enabled && !example) return@render Pair(100, 50)
         // Check if HUD is toggled
-        if (!toggleHud && !example) return@render Pair(0, 0)
+        if (!showHud && !example) return@render Pair(0, 0)
         
         if (!ServerUtils.isOnTelos() && !example) return@render Pair(100, 50)
         
@@ -287,17 +288,13 @@ object PityCounterModule : Module(
         if (items.isEmpty()) return@render Pair(100, 50)
         
         val font = mc.font
-        val isChatFocused = example || mc.screen is net.minecraft.client.gui.screens.ChatScreen
         var anyFullyTruncated = false
         
         val processedItems = items.map { item ->
             var itemName = item.displayName
             
-            // If chat isn't focused, truncate
-            if (!isChatFocused) {
-                itemName = getTruncatedName(itemName, maxCharacters)
-                if (itemName == "-") anyFullyTruncated = true
-            }
+            itemName = getTruncatedName(itemName, maxCharacters)
+            if (itemName == "-") anyFullyTruncated = true
             
             val pityCount = if (example) {
                 when (item) {

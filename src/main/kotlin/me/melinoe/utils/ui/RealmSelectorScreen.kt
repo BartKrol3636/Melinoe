@@ -1,6 +1,6 @@
 package me.melinoe.utils.ui
 
-import me.melinoe.Melinoe
+import me.melinoe.network.RealmFetcher
 import me.melinoe.utils.LocalAPI
 import me.melinoe.utils.startsWithOneOf
 import net.minecraft.client.gui.GuiGraphics
@@ -10,34 +10,17 @@ import net.minecraft.network.chat.Component
 
 /**
  * Realm Selector Screen - displays a grid of server buttons for teleportation
- * 
+ *
  * Features:
  * - Auto-detects region (NA/EU/SG) based on current world
- * - Displays servers in a 4-column grid
- * - Hub servers centered at the bottom
+ * - Hub & mission servers centered at the bottom
  * - Gradient-colored title
  * - Strikethrough text for current server
  */
 object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
-
+    
     private val serverButtons = mutableListOf<Button>()
     private val buttonLookup = mutableMapOf<String, Button>()
-    
-    // Server name arrays by region
-    private val naServerNames = arrayOf(
-        "Groveridge", "Bayou", "Cedar", "Dakota", "Eagleton",
-        "Farrion", "Ashburn", "Holloway", "Hub-1", "Missions"
-    )
-    
-    private val euServerNames = arrayOf(
-        "Astra", "Balkan", "Creska", "Draskov", "Estenmoor",
-        "Falkenburg", "Galla", "Helmburg", "Ivarn", "Jarnwald",
-        "Krausenfeld", "Lindenburg", "Hub-1", "Missions"
-    )
-    
-    private val sgServerNames = arrayOf(
-        "Asura", "Bayan", "Chantara", "Hub-1", "Missions"
-    )
     
     private enum class Region {
         NA, EU, SG, UNKNOWN
@@ -50,25 +33,26 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
     
     // Melinoe red color (0xFF8A0000)
     private val melinoeRed = 0xFF8A0000.toInt()
-
+    
     private fun ensureInitialized() {
         if (!initialized) {
             initializeServerNames()
             initialized = true
         }
     }
-
+    
     private fun initializeServerNames() {
         val servers = getServersForRegion()
         cachedButtonWidth = calculateOptimalButtonWidth()
         cacheServerGroups(servers)
     }
-
+    
     private fun calculateOptimalButtonWidth(): Int {
         val textRenderer = minecraft!!.font
         var maxWidth = 0
         
-        for (servers in listOf(naServerNames, euServerNames, sgServerNames)) {
+        // Dynamically measure width of all current servers
+        for (servers in listOf(RealmFetcher.naServers, RealmFetcher.euServers, RealmFetcher.sgServers)) {
             for (server in servers) {
                 val width = textRenderer.width(server)
                 if (width > maxWidth) {
@@ -79,7 +63,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         
         return maxWidth + 20
     }
-
+    
     private fun getServersForRegion(): List<String> {
         if (!me.melinoe.utils.ServerUtils.isOnTelos()) {
             return listOf("Not on Telos")
@@ -89,13 +73,13 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         val region = classifyRegion(currentWorld)
         
         return when (region) {
-            Region.NA -> naServerNames.toList()
-            Region.EU -> euServerNames.toList()
-            Region.SG -> sgServerNames.toList()
+            Region.NA -> RealmFetcher.naServers
+            Region.EU -> RealmFetcher.euServers
+            Region.SG -> RealmFetcher.sgServers
             Region.UNKNOWN -> listOf("Not on Telos")
         }
     }
-
+    
     private fun classifyRegion(world: String): Region {
         val lower = world.trim().lowercase()
         if (lower.isEmpty()) return Region.UNKNOWN
@@ -107,7 +91,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
             else -> Region.SG
         }
     }
-
+    
     private fun cacheServerGroups(servers: List<String>) {
         val regular = mutableListOf<String>()
         val hubs = mutableListOf<String>()
@@ -124,11 +108,8 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         cachedRegularServers = regular
         cachedHubServers = hubs
     }
-
+    
     private fun createButtons(servers: List<String>) {
-        serverButtons.clear()
-        buttonLookup.clear()
-        
         for (serverName in servers) {
             val button = Button.builder(Component.literal(serverName)) { btn ->
                 val player = minecraft?.player
@@ -137,14 +118,14 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
                     minecraft?.setScreen(null) // Close screen after clicking
                 }
             }
-            .bounds(0, 0, cachedButtonWidth, 20)
-            .build()
+                .bounds(0, 0, cachedButtonWidth, 20)
+                .build()
             
             serverButtons.add(button)
             buttonLookup[serverName] = button
         }
     }
-
+    
     override fun init() {
         super.init()
         
@@ -165,7 +146,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
             addRenderableWidget(button)
         }
     }
-
+    
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         // Render background without blur to avoid "Can only blur once per frame" crash
         renderTransparentBackground(guiGraphics)
@@ -282,7 +263,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         
         super.render(guiGraphics, mouseX, mouseY, partialTick)
     }
-
+    
     /**
      * Renders the colored title "Realm Selector" with 2.0x font scale
      */
@@ -334,6 +315,6 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         // Restore matrix
         poseStack.popMatrix()
     }
-
+    
     override fun isPauseScreen(): Boolean = false
 }

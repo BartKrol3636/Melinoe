@@ -25,8 +25,6 @@ object LocalAPI {
     private var countdownLock = false
     private var currentPortalCall = ""
     private var currentPortalCallTime = 0
-    private var initialHash = 0
-    private var initialHashSet = false
     
     private var portalCountdownTicks = 0
     private var initialized = false
@@ -53,7 +51,7 @@ object LocalAPI {
         on<BossBarUpdateEvent> {
             updateCharacterArea(bossBarMap)
         }
-
+        
         // Keep tick handler only for portal countdown (client-side timer) and dimension tracking
         on<TickEvent.End> {
             // Track dimension changes for dungeon chains
@@ -168,7 +166,7 @@ object LocalAPI {
      * Update character area from boss bars.
      * Now called only when boss bars change via BossBarUpdateEvent.
      */
-    private fun updateCharacterArea(bossBarMap: Map<java.util.UUID, net.minecraft.client.gui.components.LerpingBossEvent>) {
+    fun updateCharacterArea(bossBarMap: Map<java.util.UUID, net.minecraft.client.gui.components.LerpingBossEvent>) {
         if (bossBarMap.isEmpty()) return
         
         val bossBars = bossBarMap.values.toList()
@@ -209,7 +207,7 @@ object LocalAPI {
             currentCharacterArea = newArea
             onAreaChanged(previousArea, newArea)
         }
-
+        
         // Find the boss bar (not the area bar, and not empty)
         // The boss bar has a Unicode icon but no ASCII letters
         val bossBar = bossBars.firstOrNull { bar ->
@@ -223,7 +221,8 @@ object LocalAPI {
             
             // Boss bar should have content but no letters after stripping non-ASCII
             rawName.isNotEmpty() && !hasLetters
-        } ?: bossBars.firstOrNull { it != areaBar && it.name.string.isNotEmpty() } // Fallback: any non-area, non-empty bar
+        }
+            ?: bossBars.firstOrNull { it != areaBar && it.name.string.isNotEmpty() } // Fallback: any non-area, non-empty bar
         
         if (bossBar == null) {
             // Check portal countdown if we just finished a boss
@@ -251,66 +250,56 @@ object LocalAPI {
             return
         }
         
-        if (!initialHashSet) {
-            initialHash = bossBar.name.hashCode() // This is the trash hash we can ignore
-            initialHashSet = true // Once player loads onto the server we know the default hash of the empty bossbar
-            Melinoe.logger.info("Initial Boss hash set! and hash is: $initialHash")
-        }
-
         val currentBossHash = bossBar.name.hashCode()
-
+        
         // All updated as of 21th January 2026
-        if (currentBossHash == initialHash) {
-            currentCharacterFighting = ""
-        } else {
-            currentCharacterFighting = when (currentBossHash) {
-                -168181711 -> "Chungus"
-                1368623635 -> "Illarius"
-                -1253632898 -> "Astaroth"
-                -168176906 -> "Glumi"
-                -1254008649 -> "Lotil"
-                1368934038 -> "Tidol"
-                -1622056066 -> "Valus"
-                -1907114029 -> "Oozul"
-                -1343349613 -> "Freddy"
-                -342545608 -> "Anubis"
-                -1240191621 -> "Hollowbane"
-                -1048713371 -> "Claus"
-                1824190226 -> "Shadowflare"
-                -1382454635 -> "Loa"
-                -132746136 -> "Valerion"
-                -829226362 -> "Nebula"
-                -132585649 -> "Ophanim"
-                -708336010 -> "Prismara"
-                -1254007688 -> "Omnipotent"
-                -1621744702 -> "Thalassar"
-                -1643392642 -> "Silex"
-                290925398 -> "Chronos"
-                -422985676 -> "Golden Freddy"
-                -342534076 -> "Kurvaros"
-                -1370656917 -> "Warden"
-                -1370655956 -> "Herald"
-                -1370654995 -> "Reaper"
-                -1370654034 -> "Defender"
-                -1622067598 -> "Asmodeus"
-                -1643406096 -> "Seraphim"
-                -1643245609 -> "True Seraph"
-                -132915272 -> "True Ophan"
-                2131893865 -> "Raphael's Castle"
-                254038329 -> "Raphael"
-                230903377 -> "Sylvaris"
-                -1253581965 -> "Voided Omnipotent"
-                1301379752 -> "Unrest"
-                -828991878 -> "Aetheris"
-                1420701227 -> "Malthar"
-                else -> ""
-            }
+        currentCharacterFighting = when (currentBossHash) {
+            -168181711 -> "Chungus"
+            1368623635 -> "Illarius"
+            -1253632898 -> "Astaroth"
+            -168176906 -> "Glumi"
+            -1254008649 -> "Lotil"
+            1368934038 -> "Tidol"
+            -1622056066 -> "Valus"
+            -1907114029 -> "Oozul"
+            -1343349613 -> "Freddy"
+            -342545608 -> "Anubis"
+            -1240191621 -> "Hollowbane"
+            -1048713371 -> "Claus"
+            1824190226 -> "Shadowflare"
+            -1382454635 -> "Loa"
+            -132746136 -> "Valerion"
+            -829226362 -> "Nebula"
+            -132585649 -> "Ophanim"
+            -708336010 -> "Prismara"
+            -1254007688 -> "Omnipotent"
+            -1621744702 -> "Thalassar"
+            -1643392642 -> "Silex"
+            290925398 -> "Chronos"
+            -422985676 -> "Golden Freddy"
+            -342534076 -> "Kurvaros"
+            -1370656917 -> "Warden"
+            -1370655956 -> "Herald"
+            -1370654995 -> "Reaper"
+            -1370654034 -> "Defender"
+            -1622067598 -> "Asmodeus"
+            -1643406096 -> "Seraphim"
+            -1643245609 -> "True Seraph"
+            -132915272 -> "True Ophan"
+            2131893865 -> "Raphael's Castle"
+            254038329 -> "Raphael"
+            230903377 -> "Sylvaris"
+            -1253581965 -> "Voided Omnipotent"
+            1301379752 -> "Unrest"
+            -828991878 -> "Aetheris"
+            1420701227 -> "Malthar"
+            else -> ""
         }
-
+        
         // Improved system to find HashCodes
         // This can honestly be kept in if needed, it does not spam logs like before very useful to get Hash's
         // If the initial hash is known and the player is on an actual boss
-        if (initialHash != currentBossHash && lastKnownBossHash != currentBossHash) {
+        if (lastKnownBossHash != currentBossHash) {
             // Comparing Hash cause they are unique, else if we fight two unknown bosses back to back it won't print
             
             // Check if this is an unknown boss
@@ -322,8 +311,8 @@ object LocalAPI {
                 Melinoe.logger.warn("Area: $currentCharacterArea")
                 Melinoe.logger.warn("")
                 Melinoe.logger.warn("Copy the above info and send it to:")
-                Melinoe.logger.warn("• Discord: https://discord.gg/melinoe")
-                Melinoe.logger.warn("• GitHub: https://github.com/NoWayItzJoey/Melinoe/issues")
+                Melinoe.logger.warn("• Discord: https://discord.gg/Nxhmxjt3kR")
+                Melinoe.logger.warn("• GitHub: https://github.com/House-Hades/Melinoe/issues")
                 Melinoe.logger.warn("═══════════════════════════════════════════════════════")
             } else {
                 Melinoe.logger.info("Boss detected: $currentCharacterFighting (hash: $currentBossHash) in area: $currentCharacterArea")
@@ -331,33 +320,6 @@ object LocalAPI {
             
             lastKnownBoss = currentCharacterFighting
             lastKnownBossHash = currentBossHash
-        }
-
-        // This means a boss has died recently
-        if (lastKnownBoss.isNotEmpty() && currentBossHash == initialHash) {
-            // We are making sure there is a last known boss and that there is no current boss
-            // It's not guaranteed that the player even killed the boss or just moved away
-            // As it is rn, this is called every tick if a boss died or even if you move away from a boss
-            currentPortalCall = when (lastKnownBoss) {
-                "Chungus" -> "void"
-                "Illarius" -> "loa"
-                "Astaroth" -> "shatters"
-                "Glumi" -> "fungal"
-                "Lotil" -> "omni"
-                "Tidol" -> "corsairs"
-                "Valus" -> "cultists"
-                "Oozul" -> "chronos"
-                "Freddy" -> "pizza"
-                "Anubis" -> "alair"
-                "Defender" -> "cprov"
-                else -> ""
-            }
-
-            if (currentPortalCall.isEmpty() || countdownLock) {
-                return
-            }
-            // A boss portal has dropped, start timer
-            startPortalCountdown()
         }
     }
 
@@ -491,8 +453,6 @@ object LocalAPI {
         countdownLock = false
         currentPortalCall = ""
         currentPortalCallTime = 0
-        initialHash = 0
-        initialHashSet = false
         portalCountdownTicks = 0
     }
 }

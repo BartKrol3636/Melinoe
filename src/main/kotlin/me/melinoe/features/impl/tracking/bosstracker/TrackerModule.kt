@@ -29,53 +29,118 @@ object TrackerModule : Module(
     category = Category.TRACKING,
     description = "Tracks realm bosses and displays their status"
 ) {
-
+    
     // Settings
+    private val autoTrack by BooleanSetting("Auto Track", true, desc = "Automatically run /bosses when entering a realm")
+    private val showHud by BooleanSetting("Show HUD", true, desc = "Show the boss list HUD")
     private val widgetColor by ColorSetting("Widget Color", Color(0xFF2E8F78.toInt()), desc = "Color for the widget border and title")
-    
     private val showWaypoints by BooleanSetting("Show Waypoints", true, desc = "Show waypoints at boss locations")
-    
     private val waypointBeams by BooleanSetting("Waypoint Beams", true, desc = "Show beams at boss waypoints")
-    
     private val maxTextScale by NumberSetting<Double>("Max Text Scale", 1.0, 0.1, 3.0, 0.1, desc = "Maximum scale for waypoint text when far away")
     
     // Filtering settings
     private val showAvailable by BooleanSetting("Show Available", true, desc = "Show waypoints for available bosses (white)")
-    
     private val showFighting by BooleanSetting("Show Fighting", true, desc = "Show waypoints for bosses being fought (green)")
-    
     private val showPortal by BooleanSetting("Show Portal", true, desc = "Show waypoints for defeated bosses with portal (gold)")
     
     // Distance settings
     private val maxRenderDistance by NumberSetting<Double>("Max Distance", 1000.0, 100.0, 5000.0, 50.0, desc = "Hide waypoints farther than this (blocks)")
-    
     private val fadeDistance by NumberSetting<Double>("Fade Distance", 50.0, 10.0, 200.0, 10.0, desc = "Distance over which waypoints fade in/out (blocks)")
     
     private val quickTeleportKey by KeybindSetting("Quick Teleport", GLFW.GLFW_KEY_Y, desc = "Teleport to player at boss when looking at waypoint")
         .onPress { handleQuickTeleport() }
-
+    
     // Previous world and dimension for detecting changes
     private var previousWorld: String = ""
     private var previousDimension: String = ""
+    
+    private enum class AutoTrackState {
+        IDLE, WAITING_TO_SEND, WAITING_FOR_GUI, WAITING_TO_CLOSE
+    }
+    
+    private var trackState = AutoTrackState.IDLE
+    private var stateActionTime = 0L
+    private var guiOpenTime = 0L
     
     // Timers
     private var distanceUpdateTimer = 0
     
     init {
-        // Register tick event for distance updates and portal timers
         on<RenderEvent.Extract> {
             if (!enabled) return@on
             if (!me.melinoe.utils.ServerUtils.isOnTelos()) return@on
             
             val player = mc.player ?: return@on
+            val now = System.currentTimeMillis()
             
-            // Update distances every 20 ticks (1 second)
+            when (trackState) {
+                AutoTrackState.WAITING_TO_SEND -> {
+                    if (now >= stateActionTime) {
+                        if (mc.screen != null) {
+                            // Player has a menu open, wait
+                            stateActionTime = now + 500L
+                        } else {
+                            player.connection?.sendCommand("bosses")
+                            trackState = AutoTrackState.WAITING_FOR_GUI
+                            stateActionTime = now + 10000L
+                        }
+                    }
+                }
+                AutoTrackState.WAITING_FOR_GUI -> {
+                    if (mc.screen != null) {
+                        if (mc.screen is AbstractContainerScreen<*>) {
+                            trackState = AutoTrackState.WAITING_TO_CLOSE
+                            guiOpenTime = now
+                            stateActionTime = now + 1500L // Prevent being stuck open for more than 1.5s
+                        } else {
+                            trackState = AutoTrackState.IDLE
+                        }
+                    } else if (now >= stateActionTime) {
+                        trackState = AutoTrackState.IDLE
+                    }
+                }
+                AutoTrackState.WAITING_TO_CLOSE -> {
+                    val screen = mc.screen
+                    if (screen !is AbstractContainerScreen<*>) {
+                        trackState = AutoTrackState.IDLE
+                        return@on
+                    }
+                    
+                    val timeOpen = now - guiOpenTime
+                    var hasItems = false
+                    
+                    try {
+                        val menu = screen.menu
+                        val topSize = menu.slots.size - 36
+                        if (topSize > 0) {
+                            hasItems = (0 until topSize).any { menu.getSlot(it).hasItem() }
+                        }
+                    } catch (e: Exception) {
+                        // Ignore potential sync errors from Minecraft during screen transitions
+                    }
+                    
+                    // Closure settings which dynamically works with ping
+                    val shouldClose = (hasItems && timeOpen >= 50L) || timeOpen >= 500L
+                    
+                    if (shouldClose || now >= stateActionTime) {
+                        // Force a manual scan right before closing to guarantee data isn't lost
+                        BossState.scanBossesMenu(screen)
+                        
+                        // Close properly by sending the server packet AND clearing the client screen
+                        player.closeContainer()
+                        mc.setScreen(null)
+                        
+                        trackState = AutoTrackState.IDLE
+                    }
+                }
+                AutoTrackState.IDLE -> {}
+            }
+            
+            // Update distances periodically
             distanceUpdateTimer = (distanceUpdateTimer + 1) % Constants.DISTANCE_UPDATE_INTERVAL
             
-            // Update portal timers
             BossState.updatePortalTimers()
             
-            // Update distance markers once per second
             if (distanceUpdateTimer == 0) {
                 BossState.updateDistanceMarkers()
             }
@@ -92,7 +157,7 @@ object TrackerModule : Module(
             }
         }
         
-        // Register GUI close event for /bosses menu scanning
+        // Register GUI close event for /bosses menu scanning (manual scan)
         on<GuiEvent.Close> {
             if (!enabled) return@on
             if (!me.melinoe.utils.ServerUtils.isOnTelos()) return@on
@@ -123,10 +188,22 @@ object TrackerModule : Module(
             RendererWaypoints.maxRenderDistance = maxRenderDistance
             RendererWaypoints.fadeDistance = fadeDistance
             
+            // Update HUD settings
+            RendererHUD.showHud = showHud
+            
             RendererWaypoints.render(context)
         }
     }
-
+    
+    /**
+     * Start the sequence to safely run the bosses command automatically
+     */
+    private fun startAutoTrack() {
+        if (!autoTrack) return
+        trackState = AutoTrackState.WAITING_TO_SEND
+        stateActionTime = System.currentTimeMillis() + 1000L // Give a 1 second buffer after realm entry for lag/safety
+    }
+    
     /**
      * Handle quick teleport keybind
      */
@@ -154,18 +231,19 @@ object TrackerModule : Module(
             val command = lookingAtWaypoint.getTeleportCommand()
             if (command != null) {
                 player.connection?.sendCommand(command.removePrefix("/"))
-                Message.success("Teleporting to §f$targetPlayerName §aat §f${lookingAtWaypoint.name}")
+                Message.success("<white>Teleporting to <yellow>$targetPlayerName at <gray>${lookingAtWaypoint.name}")
             }
         } else {
             Message.error("Look at a boss waypoint with a player to teleport")
         }
     }
-
+    
     /**
      * HUD rendering
      */
     private val bossTrackerHud by RendererHUD.createHUDSetting(this).also {
         RendererHUD.widgetColor = widgetColor
+        RendererHUD.showHud = showHud
     }
 
     /**
@@ -187,6 +265,10 @@ object TrackerModule : Module(
         
         if (currentWorld.isEmpty() || currentDimension.isEmpty()) {
             Melinoe.logger.info("[BossTracker] World change: empty world/dimension, skipping")
+            
+            previousWorld = ""
+            previousDimension = ""
+            trackState = AutoTrackState.IDLE // Reset process if disconnected
             return
         }
         
@@ -194,6 +276,10 @@ object TrackerModule : Module(
             Melinoe.logger.info("[BossTracker] First world load: $currentWorld (dimension: $currentDimension)")
             previousWorld = currentWorld
             previousDimension = currentDimension
+            
+            if (currentDimension == Constants.DIMENSION_REALM) {
+                startAutoTrack()
+            }
             return
         }
         
@@ -222,6 +308,10 @@ object TrackerModule : Module(
         } else if (previousDimension == Constants.DIMENSION_REALM && currentDimension == Constants.DIMENSION_REALM && currentWorld != previousWorld) {
             Melinoe.logger.info("[BossTracker] Switched between realms, clearing ${BossState.getAllBosses().size} bosses")
             BossState.clearAll()
+            startAutoTrack()
+        } else if (currentDimension == Constants.DIMENSION_REALM && (wasInHub || previousDimension != Constants.DIMENSION_REALM)) {
+            Melinoe.logger.info("[BossTracker] Entered realm from hub")
+            startAutoTrack()
         } else {
             Melinoe.logger.info("[BossTracker] World/Dimension change but no clear needed")
         }

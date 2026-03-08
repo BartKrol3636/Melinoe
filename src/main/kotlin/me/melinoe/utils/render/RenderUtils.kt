@@ -26,12 +26,12 @@ internal data class BoxData(val aabb: AABB, val r: Float, val g: Float, val b: F
 internal data class TriangleStripPoint(val pos: Vec3, val color: Int)
 internal data class TriangleStripData(val points: List<TriangleStripPoint>)
 internal data class TextData(
-    val text: String, 
-    val pos: Vec3, 
-    val scale: Float, 
-    val depth: Boolean, 
-    val cameraRotation: org.joml.Quaternionf, 
-    val font: net.minecraft.client.gui.Font, 
+    val text: String,
+    val pos: Vec3,
+    val scale: Float,
+    val depth: Boolean,
+    val cameraRotation: org.joml.Quaternionf,
+    val font: net.minecraft.client.gui.Font,
     val textWidth: Float,
     val color: Int
 )
@@ -42,7 +42,7 @@ class RenderConsumer {
     internal val filledBoxes: List<ObjectArrayList<BoxData>> = listOf(ObjectArrayList(), ObjectArrayList())
     internal val triangleStrips: List<ObjectArrayList<TriangleStripData>> = listOf(ObjectArrayList(), ObjectArrayList())
     internal val texts: ObjectArrayList<TextData> = ObjectArrayList()
-
+    
     fun clear() {
         lines.forEach { it.clear() }
         wireBoxes.forEach { it.clear() }
@@ -54,24 +54,24 @@ class RenderConsumer {
 
 object RenderBatchManager {
     val renderConsumer = RenderConsumer()
-
+    
     init {
         on<RenderEvent.Last> {
             val matrix = context.matrices() ?: return@on
             val bufferSource = context.consumers() as? MultiBufferSource.BufferSource ?: return@on
             val camera = context.gameRenderer().mainCamera?.position ?: return@on
-
+            
             matrix.pushPose()
             matrix.translate(-camera.x, -camera.y, -camera.z)
-
+            
             matrix.renderBatchedLines(renderConsumer.lines, bufferSource)
             matrix.renderBatchedWireBoxes(renderConsumer.wireBoxes, bufferSource)
             matrix.renderBatchedFilledBoxes(renderConsumer.filledBoxes, bufferSource)
             matrix.renderBatchedTriangleStrips(renderConsumer.triangleStrips, bufferSource)
             matrix.renderBatchedTexts(renderConsumer.texts, bufferSource, camera)
-
+            
             matrix.popPose()
-
+            
             renderConsumer.clear()
         }
     }
@@ -95,14 +95,14 @@ private fun PoseStack.renderBatchedLines(
             com.mojang.blaze3d.systems.RenderSystem.lineWidth(thickness)
             
             val buffer = bufferSource.getBuffer(lineRenderLayers[depthState])
-
+            
             for (line in thickLines) {
                 val (fromX, fromY, fromZ) = line.from
                 val (toX, toY, toZ) = line.to
                 val dirX = toX - fromX
                 val dirY = toY - fromY
                 val dirZ = toZ - fromZ
-
+                
                 PrimitiveRenderer.renderVector(
                     last, buffer,
                     Vector3f(fromX.toFloat(), fromY.toFloat(), fromZ.toFloat()),
@@ -110,7 +110,7 @@ private fun PoseStack.renderBatchedLines(
                     line.color1, line.color2
                 )
             }
-
+            
             bufferSource.endBatch(lineRenderLayers[depthState])
         }
         
@@ -176,7 +176,7 @@ private fun PoseStack.renderBatchedTriangleStrips(
     
     for (depthState in 0..1) {
         if (triangleStrips[depthState].isEmpty()) continue
-
+        
         for (strip in triangleStrips[depthState]) {
             // Get a fresh buffer for each strip to prevent connections between strips
             val buffer = bufferSource.getBuffer(triangleRenderLayers[depthState])
@@ -198,30 +198,30 @@ private fun PoseStack.renderBatchedTexts(
     camera: Vec3
 ) {
     val cameraPos = -camera
-
+    
     for (textData in texts) {
         pushPose()
         val pose = last().pose()
         val scaleFactor = textData.scale * 0.025f
-
+        
         pose.translate(textData.pos.x.toFloat(), textData.pos.y.toFloat(), textData.pos.z.toFloat())
             .translate(cameraPos.x.toFloat(), cameraPos.y.toFloat(), cameraPos.z.toFloat())
             .rotate(textData.cameraRotation)
             .scale(scaleFactor, -scaleFactor, scaleFactor)
-
+        
         textData.font.drawInBatch(
-            textData.text, 
-            -textData.textWidth / 2f, 
-            0f, 
-            textData.color, 
-            true, 
-            pose, 
+            textData.text,
+            -textData.textWidth / 2f,
+            0f,
+            textData.color,
+            true,
+            pose,
             bufferSource,
             if (textData.depth) net.minecraft.client.gui.Font.DisplayMode.NORMAL else net.minecraft.client.gui.Font.DisplayMode.SEE_THROUGH,
-            0, 
+            0,
             net.minecraft.client.renderer.LightTexture.FULL_BRIGHT
         )
-
+        
         popPose()
     }
 }
@@ -232,14 +232,14 @@ fun RenderEvent.Extract.drawLine(points: Collection<Vec3>, color: Color, depth: 
 
 fun RenderEvent.Extract.drawLine(points: Collection<Vec3>, color1: Color, color2: Color, depth: Boolean, thickness: Float = 3f) {
     if (points.size < 2) return
-
+    
     val rgba1 = color1.rgba
     val rgba2 = color2.rgba
     val batch = consumer.lines[if (depth) DEPTH else NO_DEPTH]
-
+    
     val iterator = points.iterator()
     var current = iterator.next()
-
+    
     while (iterator.hasNext()) {
         val next = iterator.next()
         batch.add(LineData(current, next, rgba1, rgba2, thickness))
@@ -265,11 +265,49 @@ fun RenderEvent.Extract.drawStyledBox(
     style: Int = 1,
     depth: Boolean = true
 ) {
+    val outlineColor = Color(color.red, color.green, color.blue, 1f)
     when (style) {
-        0 -> drawWireFrameBox(aabb, color, depth = depth)
+        0 -> drawWireFrameBox(aabb, outlineColor, depth = depth)
         1 -> {
-            drawFilledBox(aabb, Color(color.red, color.green, color.blue, (color.alphaFloat * 0.5f).coerceIn(0f, 1f)), depth = depth)
-            drawWireFrameBox(aabb, color, depth = depth)
+            drawFilledBox(aabb, color, depth = depth)
+            drawWireFrameBox(aabb, outlineColor, depth = depth)
+        }
+    }
+}
+
+fun RenderEvent.Extract.drawStyledBox(
+    aabb: AABB,
+    fillColor: Color,
+    outlineColor: Color,
+    style: Int,
+    depth: Boolean = true
+) {
+    when (style) {
+        0 -> drawWireFrameBox(aabb, outlineColor, depth = depth)
+        1 -> {
+            drawFilledBox(aabb, fillColor, depth = depth)
+            drawWireFrameBox(aabb, outlineColor, depth = depth)
+        }
+    }
+}
+
+fun RenderEvent.Extract.drawStyledBox(
+    aabb: AABB,
+    fillColor: Color,
+    outlineColor: Color,
+    style: String,
+    depth: Boolean = true
+) {
+    when (style.lowercase()) {
+        "outline" -> drawWireFrameBox(aabb, outlineColor, depth = depth)
+        "filled outline", "filled" -> {
+            drawFilledBox(aabb, fillColor, depth = depth)
+            drawWireFrameBox(aabb, outlineColor, depth = depth)
+        }
+        else -> {
+            // Fallback default
+            drawFilledBox(aabb, fillColor, depth = depth)
+            drawWireFrameBox(aabb, outlineColor, depth = depth)
         }
     }
 }
@@ -412,33 +450,13 @@ fun RenderEvent.Extract.drawSquare(
     batch.add(TriangleStripData(points))
 }
 
-fun RenderEvent.Extract.drawArc(
-    center: Vec3,
-    radius: Float,
-    color: Color,
-    segments: Int = 6,
-    thickness: Float = 3f,
-    depth: Boolean = false
-) {
-    val points = mutableListOf<Vec3>()
-    
-    for (i in 0..segments) {
-        val angle = Math.PI * 0.4 + Math.PI * 0.2 * (i.toDouble() / segments) - Math.PI * 0.5
-        val x = center.x + radius * kotlin.math.sin(angle)
-        val z = center.z + radius * kotlin.math.cos(angle)
-        points.add(Vec3(x, center.y, z))
-    }
-
-    drawLine(points, color, depth, thickness)
-}
-
 object PrimitiveRenderer {
     private val edges = intArrayOf(
         0, 1,  1, 2,  2, 3,  3, 0,
         4, 5,  5, 6,  6, 7,  7, 4,
         0, 4,  1, 5,  2, 6,  3, 7
     )
-
+    
     fun renderLineBox(
         pose: PoseStack.Pose,
         buffer: VertexConsumer,
@@ -451,7 +469,7 @@ object PrimitiveRenderer {
         val x1 = aabb.maxX.toFloat()
         val y1 = aabb.maxY.toFloat()
         val z1 = aabb.maxZ.toFloat()
-
+        
         val corners = floatArrayOf(
             x0, y0, z0,
             x1, y0, z0,
@@ -462,27 +480,27 @@ object PrimitiveRenderer {
             x1, y1, z1,
             x0, y1, z1
         )
-
+        
         for (i in edges.indices step 2) {
             val i0 = edges[i] * 3
             val i1 = edges[i + 1] * 3
-
+            
             val x0 = corners[i0]
             val y0 = corners[i0 + 1]
             val z0 = corners[i0 + 2]
             val x1 = corners[i1]
             val y1 = corners[i1 + 1]
             val z1 = corners[i1 + 2]
-
+            
             val dx = x1 - x0
             val dy = y1 - y0
             val dz = z1 - z0
-
+            
             buffer.addVertex(pose, x0, y0, z0).setColor(r, g, b, a).setNormal(pose, dx, dy, dz)
             buffer.addVertex(pose, x1, y1, z1).setColor(r, g, b, a).setNormal(pose, dx, dy, dz)
         }
     }
-
+    
     fun addChainedFilledBoxVertices(
         pose: PoseStack.Pose,
         buffer: VertexConsumer,
@@ -491,55 +509,55 @@ object PrimitiveRenderer {
         r: Float, g: Float, b: Float, a: Float
     ) {
         val matrix = pose.pose()
-
+        
         fun vertex(x: Float, y: Float, z: Float) {
             buffer.addVertex(matrix, x, y, z).setColor(r, g, b, a)
         }
-
+        
         vertex(minX, minY, minZ)
         vertex(minX, minY, minZ)
         vertex(minX, minY, minZ)
-
+        
         vertex(minX, minY, maxZ)
         vertex(minX, maxY, minZ)
         vertex(minX, maxY, maxZ)
-
+        
         vertex(minX, maxY, maxZ)
-
+        
         vertex(minX, minY, maxZ)
         vertex(maxX, maxY, maxZ)
         vertex(maxX, minY, maxZ)
-
+        
         vertex(maxX, minY, maxZ)
-
+        
         vertex(maxX, minY, minZ)
         vertex(maxX, maxY, maxZ)
         vertex(maxX, maxY, minZ)
-
+        
         vertex(maxX, maxY, minZ)
-
+        
         vertex(maxX, minY, minZ)
         vertex(minX, maxY, minZ)
         vertex(minX, minY, minZ)
-
+        
         vertex(minX, minY, minZ)
-
+        
         vertex(maxX, minY, minZ)
         vertex(minX, minY, maxZ)
         vertex(maxX, minY, maxZ)
-
+        
         vertex(maxX, minY, maxZ)
-
+        
         vertex(minX, maxY, minZ)
         vertex(minX, maxY, minZ)
         vertex(minX, maxY, maxZ)
         vertex(maxX, maxY, minZ)
         vertex(maxX, maxY, maxZ)
-
+        
         vertex(maxX, maxY, maxZ)
         vertex(maxX, maxY, maxZ)
     }
-
+    
     fun renderVector(
         pose: PoseStack.Pose,
         buffer: VertexConsumer,
@@ -551,15 +569,15 @@ object PrimitiveRenderer {
         val endX = start.x() + direction.x.toFloat()
         val endY = start.y() + direction.y.toFloat()
         val endZ = start.z() + direction.z.toFloat()
-
+        
         val nx = direction.x.toFloat()
         val ny = direction.y.toFloat()
         val nz = direction.z.toFloat()
-
+        
         buffer.addVertex(pose, start.x(), start.y(), start.z())
             .setColor(startColor)
             .setNormal(pose, nx, ny, nz)
-
+        
         buffer.addVertex(pose, endX, endY, endZ)
             .setColor(endColor)
             .setNormal(pose, nx, ny, nz)
@@ -624,7 +642,7 @@ object PrimitiveRenderer {
         buffer.addVertex(pose, x1 - perpX, y1, z1 - perpZ)
             .setColor(startColor)
             .setNormal(pose, dirX, dirY, dirZ)
-            
+        
         buffer.addVertex(pose, x1 + perpX, y1, z1 + perpZ)
             .setColor(startColor)
             .setNormal(pose, dirX, dirY, dirZ)
@@ -633,7 +651,7 @@ object PrimitiveRenderer {
 
 /**
  * Draw 3D text in world space that always faces the camera.
- * 
+ *
  * @param text The text to display
  * @param pos The world position to render the text at
  * @param scale The scale of the text (1.0 = normal size)
@@ -641,16 +659,16 @@ object PrimitiveRenderer {
  * @param depth Whether the text should respect depth (true = can be occluded by blocks)
  */
 fun RenderEvent.Extract.drawText3D(
-    text: String, 
-    pos: Vec3, 
-    scale: Float = 1.0f, 
-    color: Int = 0xFFFFFFFF.toInt(), 
+    text: String,
+    pos: Vec3,
+    scale: Float = 1.0f,
+    color: Int = 0xFFFFFFFF.toInt(),
     depth: Boolean = false
 ) {
     val cameraRotation = Melinoe.mc.gameRenderer.mainCamera.rotation()
     val font = Melinoe.mc.font
     val textWidth = font.width(text).toFloat()
-
+    
     consumer.texts.add(TextData(text, pos, scale, depth, cameraRotation, font, textWidth, color))
 }
 
@@ -658,10 +676,10 @@ fun RenderEvent.Extract.drawText3D(
  * Draw 3D text in world space with a Color object.
  */
 fun RenderEvent.Extract.drawText3D(
-    text: String, 
-    pos: Vec3, 
-    scale: Float = 1.0f, 
-    color: Color, 
+    text: String,
+    pos: Vec3,
+    scale: Float = 1.0f,
+    color: Color,
     depth: Boolean = false
 ) {
     drawText3D(text, pos, scale, color.rgba, depth)

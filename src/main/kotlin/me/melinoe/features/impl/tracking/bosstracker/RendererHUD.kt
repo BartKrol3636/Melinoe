@@ -3,6 +3,7 @@ package me.melinoe.features.impl.tracking.bosstracker
 import me.melinoe.Melinoe.mc
 import me.melinoe.clickgui.settings.impl.HUDSetting
 import me.melinoe.utils.Color
+import me.melinoe.utils.ServerUtils
 import me.melinoe.utils.TelosItemUtils
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
@@ -23,6 +24,7 @@ import java.util.*
 object RendererHUD {
     
     var widgetColor = Color(0xFF8A0000.toInt())
+    var showHud = true
     
     /**
      * Create HUD setting for the boss tracker display
@@ -37,15 +39,17 @@ object RendererHUD {
             description = "Position of the boss tracker display",
             module = module
         ) render@{ example ->
-            if (!me.melinoe.utils.ServerUtils.isOnTelos() && !example) return@render Pair(0, 0)
+            if (!showHud && !example) return@render Pair(0, 0)
+            
+            if (!ServerUtils.isOnTelos() && !example) return@render Pair(0, 0)
             
             // Check if we should show the tracker (only in realms)
             val level = mc.level
             val dimensionPath = level?.dimension()?.location()?.path
             if (dimensionPath != Constants.DIMENSION_REALM && !example) return@render Pair(0, 0)
-
+            
             val hiddenShadowlandsBosses = listOf("Reaper", "Warden", "Herald")
-
+            
             val aliveBosses = if (example) {
                 listOf(
                     BossState.TrackedBoss("Anubis", BlockPos(100, 64, 200), BossState.State.ALIVE, BossData.ANUBIS).apply {
@@ -236,7 +240,7 @@ object RendererHUD {
      */
     private fun buildBossText(boss: BossState.TrackedBoss): Component {
         val text = Component.empty()
-
+        
         val distanceColor = when {
             boss.distanceMarkerValue <= 2.0 -> ChatFormatting.GREEN
             boss.distanceMarkerValue <= 4.0 -> ChatFormatting.YELLOW

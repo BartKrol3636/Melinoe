@@ -7,6 +7,7 @@ import me.melinoe.clickgui.settings.impl.ColorSetting
 import me.melinoe.clickgui.settings.impl.HUDSetting
 import me.melinoe.events.core.onReceive
 import me.melinoe.utils.Color
+import me.melinoe.utils.LocalAPI
 import me.melinoe.utils.render.textDim
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket
 import net.minecraft.core.particles.ParticleTypes
@@ -40,7 +41,7 @@ object AssassinStacksModule : Module(
         if (!enabled && !example) return@render 0 to 0
         
         val stacks = if (example) 5 else getStacks()
-        if (stacks == 0 && !example) return@render 0 to 0
+        if (stacks == 0) return@render 0 to 0
         
         // Draw stack count
         val nameText = "Stacks: "
@@ -87,6 +88,9 @@ object AssassinStacksModule : Module(
         onReceive<ClientboundLevelParticlesPacket> {
             if (!enabled) return@onReceive
             if (!me.melinoe.utils.ServerUtils.isOnTelos()) return@onReceive
+            
+            val char = LocalAPI.getCurrentCharacterType()
+            if (!char.contains("Assassin")) return@onReceive
             
             // Check if it's an electric_spark or dust particle
             val isElectricSpark = particle.type == ParticleTypes.ELECTRIC_SPARK

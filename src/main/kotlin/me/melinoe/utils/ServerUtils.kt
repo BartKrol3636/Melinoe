@@ -2,6 +2,9 @@ package me.melinoe.utils
 
 import me.melinoe.Melinoe
 import me.melinoe.events.core.onReceive
+import me.melinoe.network.ModWebSocket
+import me.melinoe.network.RealmFetcher
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.Util
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket
 import net.minecraft.network.protocol.ping.ClientboundPongResponsePacket
@@ -20,6 +23,7 @@ object ServerUtils {
 
     var averagePing: Int = 0
         private set
+    
 
     /**
      * Check if the player is on Telos Realms server
@@ -59,6 +63,26 @@ object ServerUtils {
             }
 
             averagePing = (total / sampleSize).toInt()
+        }
+        
+        ClientPlayConnectionEvents.JOIN.register { listener, sender, minecraft ->
+            val serverAddress = listener.serverData?.ip ?: return@register
+            
+            if (serverAddress.contains("telosrealms.com", ignoreCase = true)) {
+                Melinoe.logger.info("[Presence] Joined Telos. Announcing presence...")
+                
+                ModWebSocket.connect(minecraft.user.name)
+                RealmFetcher.fetchServers()
+            }
+        }
+        
+        ClientPlayConnectionEvents.DISCONNECT.register { handler, client ->
+            val serverAddress = handler.serverData?.ip ?: return@register
+            
+            if (serverAddress.contains("telosrealms.com", ignoreCase = true)) {
+                Melinoe.logger.info("Disconnected from server. Removing presence...")
+                ModWebSocket.disconnect()
+            }
         }
     }
 }

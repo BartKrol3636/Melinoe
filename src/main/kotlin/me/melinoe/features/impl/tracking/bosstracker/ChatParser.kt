@@ -114,8 +114,6 @@ object ChatParser {
             Melinoe.logger.info("[BossTracker] 10/10 world bosses defeated! Spawning Raphael portal")
             val raphael = BossState.updateBoss("Raphael", BossState.State.DEFEATED_PORTAL_ACTIVE)
             raphael?.resetPortalTimer(Constants.PORTAL_TIMER_RAPHAEL)
-            
-            Message.warning("Raphael's portal has spawned!")
         }
         
         // Return true to hide the "has been defeated" message

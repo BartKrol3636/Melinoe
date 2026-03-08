@@ -4,11 +4,11 @@
   "version": "${mod_version}",
   "name": "${mod_name}",
   "description": "${mod_description}",
-  "authors": ["NoWayItzJoey"],
+  "authors": ["NoWayItzJoey", "Willow", "Magnetite", "Nyxie"],
   "contact": {
-    "homepage": "https://github.com/NoWayItzJoey/Melinoe",
-    "sources": "https://github.com/NoWayItzJoey/Melinoe",
-    "issues": "https://github.com/NoWayItzJoey/Melinoe/issues"
+    "homepage": "https://github.com/House-Hades/Melinoe",
+    "sources": "https://github.com/House-Hades/Melinoe",
+    "issues": "https://github.com/House-Hades/Melinoe/issues"
   },
   "icon": "assets/melinoe/icon.png",
   "license": "LGPL-3.0",
@@ -36,7 +36,7 @@
   "custom": {
     "modmenu": {
       "links": {
-        "modmenu.discord": "https://discord.gg/yourdiscord"
+        "modmenu.discord": "https://discord.gg/Nxhmxjt3kR"
       },
       "update_checker": true
     }

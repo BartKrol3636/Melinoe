@@ -1,14 +1,20 @@
 package me.melinoe.utils.data
 
 import me.melinoe.Melinoe
+import me.melinoe.events.ChatPacketEvent
+import me.melinoe.events.core.EventBus
+import me.melinoe.events.core.on
 import me.melinoe.features.impl.tracking.PityCounterModule
+import me.melinoe.utils.ChatManager.hideMessage
 import me.melinoe.utils.LocalAPI
 import me.melinoe.utils.Message
 import me.melinoe.utils.TabListUtils
 import me.melinoe.utils.data.persistence.TrackingKey
 import me.melinoe.utils.data.persistence.TypeSafeDataAccess
+import me.melinoe.utils.noControlCodes
 import me.melinoe.utils.toNative
 import net.minecraft.client.GuiMessageTag
+import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.item.ItemEntity
 
 /**
@@ -31,15 +37,15 @@ import net.minecraft.world.entity.item.ItemEntity
  * - Detects specific items by texture path and resets their pity counters
  */
 object BagTracker {
-
+    
     private var currentBoss: String = ""
-
+    
     // Item scanning state
     private var ticksRemaining = 0
     private val detectedItems = mutableSetOf<Item>()
     private val recentPityCache = mutableMapOf<Item, Int>()
     private val recentPityCacheTime = mutableMapOf<Item, Long>()
-
+    
     init {
         // Register tick handler for item scanning
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register { client ->
@@ -47,17 +53,17 @@ object BagTracker {
                 onTick()
             }
         }
-
-        // Register chat message handler for detecting item drops from chat
-        net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.GAME.register { message, overlay ->
-            if (!overlay) {
-                handleChatMessage(message.string)
-            }
+        
+        EventBus.subscribe(this)
+        
+        // Register custom ChatPacketEvent handler to modify/hide messages
+        on<ChatPacketEvent> {
+            this.handleChatMessage()
         }
     }
-
+    
     // ==================== BAG DROP HANDLERS ====================
-
+    
     /**
      * Handle lootbag open sound - starts scanning for dropped items.
      * This is the primary trigger for item scanning (triggered by sound event).
@@ -67,7 +73,7 @@ object BagTracker {
         Melinoe.logger.info("Lootbag open sound detected, starting item scanning")
         startItemScanning()
     }
-
+    
     /**
      * Handle bloodshot bag drop - increments lifetime stat
      */
@@ -75,11 +81,11 @@ object BagTracker {
     fun onBloodshotBagDrop(itemName: String? = null) {
         currentBoss = LocalAPI.getCurrentCharacterFighting()
         Melinoe.logger.info("Bloodshot bag dropped by boss: $currentBoss")
-
+        
         // Increment bloodshot bag lifetime stat
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.BloodshotBags)
     }
-
+    
     /**
      * Handle unholy bag drop - increments lifetime stat
      */
@@ -87,11 +93,11 @@ object BagTracker {
     fun onUnholyBagDrop(itemName: String? = null) {
         currentBoss = LocalAPI.getCurrentCharacterFighting()
         Melinoe.logger.info("Unholy bag dropped by boss: $currentBoss")
-
+        
         // Increment unholy stat
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.UnholyBags)
     }
-
+    
     /**
      * Handle voidbound bag drop - increments lifetime stat
      */
@@ -99,11 +105,11 @@ object BagTracker {
     fun onVoidboundBagDrop(itemName: String? = null) {
         currentBoss = LocalAPI.getCurrentCharacterFighting()
         Melinoe.logger.info("Voidbound bag dropped by boss: $currentBoss")
-
+        
         // Increment voidbound bag lifetime stat
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.VoidboundBags)
     }
-
+    
     /**
      * Handle royal bag drop
      * Increments royalBags stat
@@ -112,7 +118,7 @@ object BagTracker {
         Melinoe.logger.info("Royal bag dropped")
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.RoyalBags)
     }
-
+    
     /**
      * Handle companion bag drop
      * Increments companionBags stat
@@ -121,7 +127,7 @@ object BagTracker {
         Melinoe.logger.info("Companion bag dropped")
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.CompanionBags)
     }
-
+    
     /**
      * Handle event bag drop (Halloween, Valentine, Christmas)
      * Increments eventBags stat
@@ -130,9 +136,9 @@ object BagTracker {
         Melinoe.logger.info("Event bag dropped")
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.EventBags)
     }
-
+    
     // ==================== BOSS DEFEAT HANDLER ====================
-
+    
     /**
      * Handle boss defeat - increments totalRuns for ANY dungeon/boss defeated
      * Also increments pity counters for ALL items that the boss can drop
@@ -140,14 +146,14 @@ object BagTracker {
      */
     fun onBossDefeat(bossName: String) {
         Melinoe.logger.info("Boss defeated: $bossName")
-
+        
         // Increment total runs for ANY boss defeat
         TypeSafeDataAccess.increment(TrackingKey.LifetimeStat.TotalRuns)
-
+        
         // Increment pity counters for all items this boss can drop
         incrementPityCounters(bossName)
     }
-
+    
     /**
      * Increment pity counters for all items that a boss can drop.
      * Uses Item-based tracking (TrackingKey.PityCounter(item.name)).
@@ -158,14 +164,14 @@ object BagTracker {
             Melinoe.logger.warn("Boss not found in BossData: $bossName")
             return
         }
-
+        
         if (boss.items.isEmpty()) {
             Melinoe.logger.debug("Boss $bossName has no items configured, skipping pity increment")
             return
         }
-
+        
         Melinoe.logger.info("Incrementing pity counters for ${boss.items.size} items from boss: $bossName")
-
+        
         // Increment pity for ALL items this boss can drop
         for (item in boss.items) {
             val pityKey = TrackingKey.PityCounter(item.name)
@@ -173,16 +179,16 @@ object BagTracker {
             Melinoe.logger.debug("  ${item.displayName}: $newCount")
         }
     }
-
+    
     // ==================== UTILITY METHODS ====================
-
+    
     /**
      * Get current boss being fought
      */
     fun getCurrentBoss(): String = currentBoss
-
+    
     // ==================== ITEM SCANNING ====================
-
+    
     /**
      * Start scanning for dropped items near the player.
      * Called when a bag animation plays.
@@ -192,94 +198,96 @@ object BagTracker {
         detectedItems.clear()
         Melinoe.logger.info("Started item scanning for 20 ticks")
     }
-
+    
     /**
      * Tick handler for scanning dropped items.
      * Should be called every client tick.
      */
     fun onTick() {
         if (ticksRemaining <= 0) return
-
+        
         val player = Melinoe.mc.player ?: return
         val level = Melinoe.mc.level ?: return
-
+        
         // Create bounding box around player (10 block radius)
         val box = player.boundingBox.inflate(10.0)
-
+        
         // Scan for item entities
         val itemEntities = level.getEntitiesOfClass(ItemEntity::class.java, box) { it.isAlive }
-
+        
         Melinoe.logger.debug("Scanning for items: ticksRemaining=$ticksRemaining, entities=${itemEntities.size}")
-
+        
         for (itemEntity in itemEntities) {
             val itemStack = itemEntity.item
-
+            
             // Get texture path from item
             val resourceLocation = try {
                 itemStack.components.get(net.minecraft.core.component.DataComponents.ITEM_MODEL)
             } catch (e: Exception) {
                 null
             }
-
+            
             if (resourceLocation == null) continue
-
+            
             // Convert ResourceLocation to string format "namespace:path"
             val texturePath = "${resourceLocation.namespace}:${resourceLocation.path}"
-
+            
             Melinoe.logger.debug("Found item entity with texture: $texturePath")
-
+            
             // Find item by texture path
             val droppedItem = resolveContextualItem(texturePath)
-
+            
             if (droppedItem != null && !detectedItems.contains(droppedItem)) {
                 // Cache pity before reset (for chat message)
                 val pityKey = TrackingKey.PityCounter(droppedItem.name)
                 val preResetPity = TypeSafeDataAccess.get(pityKey) ?: 0
                 recentPityCache[droppedItem] = preResetPity
                 recentPityCacheTime[droppedItem] = System.currentTimeMillis()
-
+                
                 // Send chat notification
                 if (PityCounterModule.useCustomMsg) {
                     sendPityResetMessage(droppedItem, preResetPity)
                 }
-
+                
                 // Reset pity for this item
                 TypeSafeDataAccess.reset(pityKey)
                 Melinoe.logger.info("Detected and reset pity for ${droppedItem.displayName} (was at $preResetPity)")
-
+                
                 // Mark as detected
                 detectedItems.add(droppedItem)
             }
         }
-
+        
         ticksRemaining--
     }
-
+    
     /**
      * Handle chat messages to detect item drops from "X got Y" messages.
-     * This is a fallback detection method in case item entity scanning misses drops.
      */
-    private fun handleChatMessage(plainText: String) {
+    private fun ChatPacketEvent.handleChatMessage() {
+        val plainText = value.noControlCodes
+        
         // Look for " got " pattern (e.g., "PlayerName got Holy Cross")
         val gotIndex = plainText.lastIndexOf(" got ")
         if (gotIndex == -1) return
-
+        
         // Extract player name
         val spaceBeforePlayer = plainText.lastIndexOf(' ', gotIndex - 1)
         if (spaceBeforePlayer == -1) return
-
+        
         // Extract player name and check against current player
-        // We do this check to ensure we only track our own drops
         val playerName = plainText.substring(spaceBeforePlayer + 1, gotIndex)
         val currentPlayerName = Melinoe.mc.player?.gameProfile?.name ?: return
+        
+        // Only modify messages and process logic if the drop belongs to the current player
         if (playerName != currentPlayerName) return
-
+        
         // Find the longest matching item display name after " got "
         var droppedItem: Item? = null
         for (item in Item.values()) {
             val itemDisplayName = item.displayName
             val itemStartIndex = gotIndex + 5 // " got ".length
-
+            
             if (plainText.indexOf(itemDisplayName, itemStartIndex) == itemStartIndex) {
                 // Prefer longer matches (e.g., "Lost Treasure Scripture" over "Lost Treasure")
                 if (droppedItem == null || itemDisplayName.length > droppedItem.displayName.length) {
@@ -287,13 +295,13 @@ object BagTracker {
                 }
             }
         }
-
+        
         if (droppedItem == null) return
-
+        
         // Resolve contextual item (hardmode variants)
         droppedItem = resolveContextualItemByDisplayName(droppedItem)
-
-        // Only process high-value items
+        
+        // Only process specific target rarities requested
         val rarity = droppedItem.rarity
         if (rarity != Item.Rarity.ROYAL &&
             rarity != Item.Rarity.BLOODSHOT &&
@@ -302,32 +310,52 @@ object BagTracker {
             rarity != Item.Rarity.COMPANION) {
             return
         }
-
-        // Check if we already detected this item recently (avoid duplicate processing)
-        if (detectedItems.contains(droppedItem)) {
-            Melinoe.logger.debug("Item ${droppedItem.displayName} already detected via entity scan, skipping chat detection")
-            return
+        
+        val alreadyDetected = detectedItems.contains(droppedItem)
+        val preResetPity: Int
+        
+        // If not already processed by the entity scanning tick fallback
+        if (!alreadyDetected) {
+            val pityKey = TrackingKey.PityCounter(droppedItem.name)
+            preResetPity = TypeSafeDataAccess.get(pityKey) ?: 0
+            recentPityCache[droppedItem] = preResetPity
+            recentPityCacheTime[droppedItem] = System.currentTimeMillis()
+            
+            TypeSafeDataAccess.reset(pityKey)
+            Melinoe.logger.info("Detected and reset pity for ${droppedItem.displayName} via chat message (was at $preResetPity)")
+            
+            detectedItems.add(droppedItem)
+        } else {
+            preResetPity = recentPityCache[droppedItem] ?: 0
+            Melinoe.logger.debug("Item ${droppedItem.displayName} already detected via entity scan")
         }
-
-        // Cache pity before reset
-        val pityKey = TrackingKey.PityCounter(droppedItem.name)
-        val preResetPity = TypeSafeDataAccess.get(pityKey) ?: 0
-        recentPityCache[droppedItem] = preResetPity
-        recentPityCacheTime[droppedItem] = System.currentTimeMillis()
-
-        // Send chat notification
+        
         if (PityCounterModule.useCustomMsg) {
-            sendPityResetMessage(droppedItem, preResetPity)
+            // Hide the original server drop message
+            hideMessage()
+            
+            // Only send if the tick fallback didn't already send it
+            if (!alreadyDetected) {
+                sendPityResetMessage(droppedItem, preResetPity)
+            }
+        } else {
+            hideMessage()
+            
+            val originalComponent = this.component
+            val area = if (LocalAPI.isInDungeon()) LocalAPI.getCurrentCharacterArea() else BossData.findByItem(droppedItem)?.label ?: "Unknown"
+            val shareText = "[${droppedItem.rarity}] Dropped ${droppedItem.displayName} at $preResetPity pity from $area!"
+            
+            val buttonMessage = " <click:suggest_command:'${shareText}'><hover:show_text:\"<gray>Pity: $preResetPity<br> Click to share in chat!</gray>\"><gray><b>⧉</b></gray></hover></click>"
+            val buttonComponent = buttonMessage.toNative()
+            
+            val finalMessage = Component.empty().append(originalComponent).append(buttonComponent)
+            
+            Melinoe.mc.execute {
+                Melinoe.mc.gui?.chat?.addMessage(finalMessage)
+            }
         }
-
-        // Reset pity for this item
-        TypeSafeDataAccess.reset(pityKey)
-        Melinoe.logger.info("Detected and reset pity for ${droppedItem.displayName} via chat message (was at $preResetPity)")
-
-        // Mark as detected
-        detectedItems.add(droppedItem)
     }
-
+    
     /**
      * Resolve contextual item from texture path.
      * Handles hardmode variants (True Ophan, True Seraph, etc.)
@@ -335,10 +363,10 @@ object BagTracker {
     private fun resolveContextualItem(texturePath: String): Item? {
         // Find default item by texture path
         val defaultItem = Item.values().find { it.texturePath == texturePath } ?: return null
-
+        
         try {
             val currentArea = LocalAPI.getCurrentCharacterArea()
-
+            
             // Build list of contextual items based on current area
             val contextItems = mutableListOf<Item>()
             when (currentArea) {
@@ -362,7 +390,7 @@ object BagTracker {
                     BossData.OPHANIM.items.forEach { contextItems.add(it) }
                 }
             }
-
+            
             // Check if any contextual item matches the texture path
             for (item in contextItems) {
                 if (item.texturePath == defaultItem.texturePath) {
@@ -372,10 +400,10 @@ object BagTracker {
         } catch (e: Exception) {
             Melinoe.logger.warn("Failed to resolve contextual item: ${e.message}")
         }
-
+        
         return defaultItem
     }
-
+    
     /**
      * Resolve contextual item from display name.
      * Handles hardmode variants (True Ophan, True Seraph, etc.) when detecting from chat messages.
@@ -383,7 +411,7 @@ object BagTracker {
     private fun resolveContextualItemByDisplayName(defaultItem: Item): Item {
         try {
             val currentArea = LocalAPI.getCurrentCharacterArea()
-
+            
             // Build list of contextual items based on current area
             val contextItems = mutableListOf<Item>()
             when (currentArea) {
@@ -407,7 +435,7 @@ object BagTracker {
                     BossData.OPHANIM.items.forEach { contextItems.add(it) }
                 }
             }
-
+            
             // Check if any contextual item matches the display name
             for (item in contextItems) {
                 if (item.displayName == defaultItem.displayName) {
@@ -417,34 +445,34 @@ object BagTracker {
         } catch (e: Exception) {
             Melinoe.logger.warn("Failed to resolve contextual item by display name: ${e.message}")
         }
-
+        
         return defaultItem
     }
-
+    
     /**
      * Send pity reset message for a specific item.
      */
     private fun sendPityResetMessage(item: Item, pityCount: Int) {
         val mc = Melinoe.mc
         if (mc.player == null) return
-
+        
         val lootboost = TabListUtils.getLootboostPercentage() ?: 0
-
+        
         // Configuration for rarity styles
         data class RarityStyle(val indicatorColor: Int, val prefix: String, val itemNameColor: String, val logName: String)
-
+        
         val style = when (item.rarity) {
             Item.Rarity.IRRADIATED -> RarityStyle(
                 0x189506,
                 "<white>\uD814\uDF19 </white><bold><gradient:#189506:#15cd15>IRRADIATED</bold>",
                 "<#189506>",
-                "ROYAL"
+                "IRRADIATED"
             )
             Item.Rarity.GILDED -> RarityStyle(
                 0xb93f12,
                 "<white>\uD818\uDCF1 </white><bold><gradient:#b93f12:#df5320>GILDED</bold>",
                 "<#b93f12>",
-                "ROYAL"
+                "GILDED"
             )
             Item.Rarity.ROYAL -> RarityStyle(
                 0x7d1775,
@@ -462,7 +490,7 @@ object BagTracker {
                 0x8d15f0,
                 "<white>\uD818\uDE35 </white><bold><gradient:#8d15f0:#be74fb>VOIDBOUND</gradient></bold>",
                 "<#8d15f0>",
-                "NIHILITY"
+                "VOIDBOUND"
             )
             Item.Rarity.UNHOLY -> RarityStyle(
                 0x5D6069,
@@ -483,28 +511,28 @@ object BagTracker {
                 "RUNE"
             )
         }
-
+        
         val lootBoostStr = if (lootboost > 0) " <yellow>[+$lootboost% LB]" else ""
         val m = Message.Colors.MUTED
         val area = if (LocalAPI.isInDungeon()) LocalAPI.getCurrentCharacterArea() else BossData.findByItem(item)?.label ?: "Unknown"
-
+        
         // Build message using MiniMessage
         var message = "${style.prefix} $m- <gray>Dropped <underlined>${style.itemNameColor}${item.displayName}</underlined> <gray>at <yellow>$pityCount</yellow> <gray>pity from ${style.itemNameColor}$area$lootBoostStr"
         if (PityCounterModule.showAnnounceButton) {
             val shareText = "[${item.rarity}] Dropped ${item.displayName} at ${pityCount} pity from $area!"
-
+            
             message += " <click:suggest_command:'${shareText}'><hover:show_text:\"<gray>Click to share in chat!</gray>\"><gray><b>⧉</b></gray></hover></click>"
         }
-
+        
         val chatIndicator = GuiMessageTag(
             style.indicatorColor,
             null,
             "${style.prefix} Drop".toNative(),
             "${style.logName} Drop"
         )
-
+        
         mc.gui?.chat?.addMessage(message.toNative(), null, chatIndicator)
-
+        
         val logMessage = "Sent pity reset message: Dropped ${item.displayName} at $pityCount pity${if (lootboost > 0) " [+$lootboost% Loot Boost]" else ""}"
         Melinoe.logger.info(logMessage)
     }

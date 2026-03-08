@@ -7,7 +7,6 @@ import me.melinoe.features.Category
 import me.melinoe.features.Module
 import me.melinoe.clickgui.settings.impl.BooleanSetting
 import me.melinoe.clickgui.settings.impl.ColorSetting
-import me.melinoe.clickgui.settings.impl.DropdownSetting
 import me.melinoe.clickgui.settings.impl.SelectorSetting
 import me.melinoe.clickgui.settings.Setting.Companion.withDependency
 import me.melinoe.utils.Color
@@ -27,51 +26,65 @@ object HitboxModule : Module(
     category = Category.VISUAL,
     description = "Renders entity hitboxes with customizable colors and fill."
 ) {
-
+    
     private val renderStyle by SelectorSetting("Render Style", "Filled Outline", listOf("Outline", "Filled Outline"), desc = "Style of the box.")
-    private val color by ColorSetting("Color", Color(255, 255, 255, 1f), true, desc = "Color of the hitbox")
-    private val renderPlayersSetting by BooleanSetting("Players", true, desc = "Render hitboxes for players")
-    private val renderMobsSetting by BooleanSetting("Mobs", true, desc = "Render hitboxes for mobs")
-    private val renderItemsSetting by BooleanSetting("Items", false, desc = "Render hitboxes for items")
+    
+    private val yourselfSetting by BooleanSetting("Yourself", true, desc = "Render hitbox for yourself")
+    private val yourselfColor by ColorSetting("Yourself Color", Color(0x594C2882), true, desc = "Color of your hitbox").withDependency { yourselfSetting }
+    
+    private val playersSetting by BooleanSetting("Players", true, desc = "Render hitboxes for other players")
+    private val playersColor by ColorSetting("Players Color", Color(0x59283582), true, desc = "Color of player hitboxes").withDependency { playersSetting }
+    
+    private val mobsSetting by BooleanSetting("Mobs", true, desc = "Render hitboxes for mobs")
+    private val mobsColor by ColorSetting("Mobs Color", Color(0x59B23939), true, desc = "Color of mob hitboxes").withDependency { mobsSetting }
+    
+    private val itemsSetting by BooleanSetting("Items", true, desc = "Render hitboxes for items")
+    private val itemsColor by ColorSetting("Items Color", Color(0x5939B293), true, desc = "Color of item hitboxes").withDependency { itemsSetting }
+    
     private val hideArmorStandsSetting by BooleanSetting("Hide Armor Stands", true, desc = "Don't render hitboxes for armor stands")
     
-    // Telos Dropdown
-    private val telosDropdown by DropdownSetting("Telos", false)
-    private val renderTelosSetting by BooleanSetting("Enable Hitboxes", true, desc = "Render hitboxes for Telos entities (bosses, mobs, attacks.)").withDependency { telosDropdown }
-    private val telosColor by ColorSetting("Telos Color", Color(255, 100, 100, 1f), true, desc = "Color for Telos hitboxes").withDependency { telosDropdown }
-
     init {
         on<RenderEvent.Extract> {
             if (!enabled) return@on // Don't render if module is disabled
             
             val level = mc.level ?: return@on
             val player = mc.player ?: return@on
-
+            
             // Render player's own hitbox (only in third person)
-            if (renderPlayersSetting && mc.options.cameraType != CameraType.FIRST_PERSON) {
+            if (yourselfSetting && mc.options.cameraType != CameraType.FIRST_PERSON) {
                 // Use interpolated render bounding box for smooth movement
                 val box = player.renderBoundingBox
                 
-                drawStyledBox(box, color, renderStyle, true)
+                // Outline uses the same color but with 100% opacity (1f)
+                val outlineColor = Color(yourselfColor.red, yourselfColor.green, yourselfColor.blue, 1f)
+                
+                drawStyledBox(box, yourselfColor, outlineColor, renderStyle, true)
             }
-
+            
             // Iterate through all other entities in the level
             for (entity in level.entitiesForRendering()) {
                 // Skip the player itself (already rendered above)
                 if (entity == player) continue
-
+                
                 // Skip armor stands if the setting is enabled
                 if (entity is ArmorStand && hideArmorStandsSetting) continue
-
-                // Determine if this is a "Telos" entity (other entity type)
-                val isTelos = entity !is Player && entity !is net.minecraft.world.entity.Mob && entity !is ItemEntity
                 
-                // Filter entity types based on settings
-                if (entity is Player && !renderPlayersSetting) continue
-                if (entity is net.minecraft.world.entity.Mob && !renderMobsSetting) continue
-                if (entity is ItemEntity && !renderItemsSetting) continue
-                if (isTelos && !renderTelosSetting) continue
-
+                // Filter entity types based on settings and get color
+                val boxColor = when (entity) {
+                    is Player -> {
+                        if (!playersSetting) continue
+                        playersColor
+                    }
+                    is ItemEntity -> {
+                        if (!itemsSetting) continue
+                        itemsColor
+                    }
+                    else -> {
+                        if (!mobsSetting) continue
+                        mobsColor
+                    }
+                }
+                
                 // Use interpolated render bounding box for smooth movement
                 val box = entity.renderBoundingBox
                 
@@ -83,11 +96,11 @@ object HitboxModule : Module(
                 val minSize = 0.01 // Minimum size threshold
                 
                 if (width < minSize || height < minSize || depth < minSize) continue
-
-                // Use Telos color if this is a Telos entity, otherwise use default color
-                val boxColor = if (isTelos) telosColor else color
-
-                drawStyledBox(box, boxColor, renderStyle, true)
+                
+                // Outline uses the same color but with 100% opacity (1f)
+                val outlineColor = Color(boxColor.red, boxColor.green, boxColor.blue, 1f)
+                
+                drawStyledBox(box, boxColor, outlineColor, renderStyle, true)
             }
         }
     }

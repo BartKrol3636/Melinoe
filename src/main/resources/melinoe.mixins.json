@@ -20,6 +20,7 @@
     "mixins.CustomHeadLayerMixin",
     "mixins.AbstractContainerScreenMixin",
     "mixins.ClientLevelMixin",
+    "mixins.PlayerTabOverlayMixin",
     "mixins.SoundSystemMixin",
     "accessors.AbstractContainerScreenAccessor",
     "accessors.CompositeRenderTypeAccessor",

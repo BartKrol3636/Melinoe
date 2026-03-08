@@ -1,5 +1,6 @@
 package me.melinoe.features.impl.misc
 
+import me.melinoe.Melinoe
 import me.melinoe.clickgui.settings.Setting.Companion.withDependency
 import me.melinoe.clickgui.settings.impl.DropdownSetting
 import me.melinoe.clickgui.settings.impl.KeybindSetting
@@ -7,12 +8,17 @@ import me.melinoe.features.Category
 import me.melinoe.features.Module
 import me.melinoe.mixin.accessors.AbstractContainerScreenAccessor
 import me.melinoe.utils.*
-import me.melinoe.utils.data.DungeonData
+import me.melinoe.utils.data.PortalData
 import me.melinoe.utils.ui.RealmSelectorScreen
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+import net.minecraft.core.component.DataComponents
+import net.minecraft.world.entity.EquipmentSlot
+import net.minecraft.world.entity.decoration.ArmorStand
+import net.minecraft.world.entity.monster.Evoker
 import org.lwjgl.glfw.GLFW
+import java.util.Locale
 
 /**
  * Keybinds Module - Provides configurable keybinds for various commands and menus
@@ -23,7 +29,7 @@ object KeybindsModule : Module(
     description = "Configurable keybinds for commands and menus"
 ) {
 
-    private val bossPhaseKey by KeybindSetting("Boss Phase", GLFW.GLFW_KEY_F6, desc = "Send boss/dungeon phase message")
+    private val calloutKey by KeybindSetting("Boss/Portal Callout", GLFW.GLFW_KEY_F6, desc = "Send a boss/dungeon/portal callout message")
         .onPress { handleBossPhase() }
     
     private val bossesMenuKey by KeybindSetting("Bosses Menu", GLFW.GLFW_KEY_UNKNOWN, desc = "Open bosses menu")
@@ -142,6 +148,7 @@ object KeybindsModule : Module(
     
     private var lastUsedTime: Long = 0L
     private val COOLDOWN_MS: Long = 10000L
+    private val PORTAL_REGEX = Regex("-=\\[(.*?)]=-")
     
     /**
      * Handle boss phase keybind - sends current phase or dungeon status
@@ -151,7 +158,12 @@ object KeybindsModule : Module(
         val player = mc.player ?: return
         
         if (!ServerUtils.isOnTelos()) {
-            sendTelosOnlyError("Boss phase")
+            sendTelosOnlyError("Boss/Dungeon callout")
+            return
+        }
+        
+        if (LocalAPI.isInNexus()) {
+            Message.error("No boss or portal detected!")
             return
         }
         
@@ -163,51 +175,84 @@ object KeybindsModule : Module(
             return
         }
         
-        // Check if in correct dungeon
-        if (LocalAPI.isInDungeon()) {
-            Message.error("You are not currently in a dungeon.")
-            return
-        }
-        
         val currentArea = LocalAPI.getCurrentCharacterArea()
-        
-        val currentDungeon = DungeonData.findByKey(currentArea)
-        if (currentDungeon == null) {
-            Message.error("You are not currently in a dungeon.")
-            return
-        }
-        
         val hp = getBossHealthPercentage()
-        lastUsedTime = currentTime
+        val currentBoss = LocalAPI.getCurrentCharacterFighting()
         
-        if (hp <= 0) {
-            player.connection.sendChat("Currently in $currentArea")
-            return
-        }
-        
-        var currentBoss = LocalAPI.getCurrentCharacterFighting() ?: ""
-        
-        // If LocalAPI fails to fetch the boss name, force it from the dungeon
-        if (currentBoss.trim().isEmpty()) {
-            currentBoss = when (currentDungeon) {
-                DungeonData.RUSTBORN_KINGDOM -> "Ophanim"
-                DungeonData.DAWN_OF_CREATION -> "True Ophan"
-                DungeonData.SERAPHS_DOMAIN -> "True Seraph"
-                DungeonData.TENEBRIS -> "Voided Omnipotent"
-                DungeonData.RAPHS_CHAMBER -> "Raphael"
-                DungeonData.DREADWOOD_THICKET -> "Sylvaris"
-                DungeonData.CELESTIALS_PROVINCE -> "Seraphim"
-                else -> "The boss"
+        if (LocalAPI.isInDungeon()) {
+            if (hp <= 0) {
+                player.connection.sendChat("Currently in $currentArea")
+                return
             }
-        }
-        
-        val currentPhase = getCurrentPhase(currentBoss, hp, currentDungeon)
-        
-        // Send phase or fallback message
-        if (currentPhase != null) {
-            player.connection.sendChat("$currentBoss is at $hp% HP - $currentPhase")
+            
+            val currentPhase = getCurrentPhase(currentBoss, hp)
+            if (currentPhase != null) {
+                player.connection.sendChat("$currentBoss is at $hp% HP - $currentPhase")
+            } else {
+                player.connection.sendChat("$currentBoss is at $hp% HP - $currentArea")
+            }
+            lastUsedTime = currentTime
         } else {
-            player.connection.sendChat("$currentBoss is at $hp% HP - $currentArea")
+            if (hp > 0) {
+                player.connection.sendChat("Teleport for $currentBoss - $hp% HP")
+                lastUsedTime = currentTime
+            } else {
+                val level = mc.level ?: return
+                
+                // Sequences are used for better memory usage
+                val closestPortal = level.getEntitiesOfClass(
+                    Evoker::class.java,
+                    player.boundingBox.inflate(10.0)
+                ).asSequence()
+                    .filter { it.distanceToSqr(player) <= 100.0 }
+                    .mapNotNull { evoker ->
+                        // Evokers are used as they are the entity behind portals
+                        val headItem = evoker.getItemBySlot(EquipmentSlot.HEAD)
+                        val itemModel = headItem.get(DataComponents.ITEM_MODEL)?.toString()
+                            ?: return@mapNotNull null
+                        
+                        val rawName = itemModel.substringAfterLast("/").uppercase(Locale.ROOT)
+                        
+                        // Ignore return portals
+                        if (rawName == "RETURN") return@mapNotNull null
+                        
+                        Pair(evoker, rawName)
+                    }
+                    .sortedBy { it.first.distanceToSqr(player) }
+                    .firstNotNullOfOrNull { (evoker, rawName) ->
+                        // Get the armor stands around the detected portal to find how many seconds are left
+                        val armorStands = level.getEntitiesOfClass(
+                            ArmorStand::class.java,
+                            evoker.boundingBox.inflate(4.0, 10.0, 4.0)
+                        )
+                        
+                        val validStand = armorStands.asSequence()
+                            .filter { it.y >= evoker.y && it.hasCustomName() }
+                            .minByOrNull { it.distanceToSqr(evoker) } ?: return@firstNotNullOfOrNull null
+                        
+                        val standName = validStand.customName?.string ?: return@firstNotNullOfOrNull null
+                        val match = PORTAL_REGEX.find(standName) ?: return@firstNotNullOfOrNull null
+                        
+                        // Pass along the evoker, the rawName, and the timer value
+                        Triple(evoker, rawName, match.groupValues[1])
+                    }
+                
+                if (closestPortal != null) {
+                    val (_, rawName, value) = closestPortal
+                    
+                    // runCatching prevents a game crash if the enum doesn't exist
+                    val cleanName = runCatching { PortalData.valueOf(rawName).label }.getOrNull()
+                    
+                    if (cleanName != null) {
+                        player.connection.sendChat("Teleport for $cleanName - ${value}s left")
+                        lastUsedTime = currentTime
+                    } else {
+                        Melinoe.logger.error("Unknown portal type detected: $rawName")
+                    }
+                } else {
+                    Message.error("No boss or portal detected!")
+                }
+            }
         }
     }
     
@@ -216,7 +261,7 @@ object KeybindsModule : Module(
      */
     private fun getBossHealthPercentage(): Int {
         val bossBarMap = BossBarUtils.getBossBarMap()
-        if (bossBarMap.isNullOrEmpty()) return -1
+        if (bossBarMap.isEmpty()) return -1
         
         val bossBars = bossBarMap.values.toList()
         
@@ -228,7 +273,7 @@ object KeybindsModule : Module(
             }
         }
         
-        // Fallback: search through all boss bars for one with valid health info
+        // Search through all boss bars for one with valid health info
         for (bossBar in bossBars) {
             val progress = bossBar.progress
             if (progress > 0.0f && progress <= 1.0f) {
@@ -242,13 +287,9 @@ object KeybindsModule : Module(
     /**
      * Determine the current phase based on boss name, health percentage, and dungeon
      */
-    private fun getCurrentPhase(bossName: String, hp: Int, dungeon: DungeonData): String? {
-        val name = bossName.lowercase()
-        
-        // Use contains to bypass any hidden color codes or weird spacing LocalAPI might return
+    private fun getCurrentPhase(bossName: String, hp: Int): String? {
         return when {
-            name.contains("ophan") -> {
-                if (dungeon != DungeonData.RUSTBORN_KINGDOM && dungeon != DungeonData.DAWN_OF_CREATION) return null
+            bossName == "Ophanim" || bossName == "True Ophan" -> {
                 when (hp) {
                     in 86..100 -> "First Phase"
                     in 61..85 -> "Walls/Eyeballs"
@@ -258,8 +299,7 @@ object KeybindsModule : Module(
                     else -> "Unknown Phase"
                 }
             }
-            name.contains("asmodeus") -> {
-                if (dungeon != DungeonData.CELESTIALS_PROVINCE) return null
+            bossName == "Asmodeus" -> {
                 when (hp) {
                     in 76..100 -> "First Phase"
                     in 51..75 -> "Second Phase"
@@ -268,8 +308,7 @@ object KeybindsModule : Module(
                     else -> "Unknown Phase"
                 }
             }
-            name.contains("seraph") -> {
-                if (dungeon != DungeonData.CELESTIALS_PROVINCE && dungeon != DungeonData.SERAPHS_DOMAIN) return null
+            bossName == "Seraphim" || bossName == "True Seraph" -> {
                 when (hp) {
                     in 82..100 -> "First Phase"
                     in 80..81 -> "Chicken"
@@ -280,8 +319,7 @@ object KeybindsModule : Module(
                     else -> "Unknown Phase"
                 }
             }
-            name.contains("omnipotent") || name.contains("voided") -> {
-                if (dungeon != DungeonData.TENEBRIS) return null
+            bossName == "Voided Omnipotent" -> {
                 when (hp) {
                     100 -> "Unchaining"
                     in 86..99 -> "Second Phase"
@@ -292,8 +330,7 @@ object KeybindsModule : Module(
                     else -> "Unknown Phase"
                 }
             }
-            name.contains("raphael") -> {
-                if (dungeon != DungeonData.RAPHS_CHAMBER) return null
+            bossName == "Raphael" -> {
                 when (hp) {
                     in 77..100 -> "First Phase"
                     in 75..76 -> "Memorise"
@@ -304,8 +341,7 @@ object KeybindsModule : Module(
                     else -> "Unknown Phase"
                 }
             }
-            name.contains("sylvaris") -> {
-                if (dungeon != DungeonData.DREADWOOD_THICKET) return null
+            bossName == "Sylvaris" -> {
                 when (hp) {
                     in 76..100 -> "First Phase"
                     in 51..75 -> "Shulker"
@@ -457,6 +493,6 @@ object KeybindsModule : Module(
      * Send an error message for features that only work on Telos
      */
     private fun sendTelosOnlyError(featureName: String) {
-        Message.error("$featureName is only available on §nᴛᴇʟᴏѕʀᴇᴀʟᴍѕ.ᴄᴏᴍ§r")
+        Message.error("$featureName is only available on <underline>ᴛᴇʟᴏѕʀᴇᴀʟᴍѕ.ᴄᴏᴍ<reset>")
     }
 }
