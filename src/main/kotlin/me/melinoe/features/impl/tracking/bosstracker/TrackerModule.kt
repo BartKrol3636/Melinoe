@@ -4,8 +4,10 @@ import me.melinoe.Melinoe
 import me.melinoe.Melinoe.mc
 import me.melinoe.clickgui.settings.impl.BooleanSetting
 import me.melinoe.clickgui.settings.impl.ColorSetting
+import me.melinoe.clickgui.settings.impl.DropdownSetting
 import me.melinoe.clickgui.settings.impl.KeybindSetting
 import me.melinoe.clickgui.settings.impl.NumberSetting
+import me.melinoe.clickgui.settings.Setting.Companion.withDependency
 import me.melinoe.events.ChatPacketEvent
 import me.melinoe.events.GuiEvent
 import me.melinoe.events.RenderEvent
@@ -35,17 +37,13 @@ object TrackerModule : Module(
     private val showHud by BooleanSetting("Show HUD", true, desc = "Show the boss list HUD")
     private val widgetColor by ColorSetting("Widget Color", Color(0xFF2E8F78.toInt()), desc = "Color for the widget border and title")
     private val showWaypoints by BooleanSetting("Show Waypoints", true, desc = "Show waypoints at boss locations")
-    private val waypointBeams by BooleanSetting("Waypoint Beams", true, desc = "Show beams at boss waypoints")
-    private val maxTextScale by NumberSetting<Double>("Max Text Scale", 1.0, 0.1, 3.0, 0.1, desc = "Maximum scale for waypoint text when far away")
+    private val waypointBeams by BooleanSetting("Waypoint Beams", true, desc = "Show beams at boss waypoints").withDependency { showWaypoints }
     
     // Filtering settings
-    private val showAvailable by BooleanSetting("Show Available", true, desc = "Show waypoints for available bosses (white)")
-    private val showFighting by BooleanSetting("Show Fighting", true, desc = "Show waypoints for bosses being fought (green)")
-    private val showPortal by BooleanSetting("Show Portal", true, desc = "Show waypoints for defeated bosses with portal (gold)")
-    
-    // Distance settings
-    private val maxRenderDistance by NumberSetting<Double>("Max Distance", 1000.0, 100.0, 5000.0, 50.0, desc = "Hide waypoints farther than this (blocks)")
-    private val fadeDistance by NumberSetting<Double>("Fade Distance", 50.0, 10.0, 200.0, 10.0, desc = "Distance over which waypoints fade in/out (blocks)")
+    private val waypointStatusDropdown by DropdownSetting("Waypoint Status", false, desc = "Filter waypoints by boss status").withDependency { showWaypoints }
+    private val showAvailable by BooleanSetting("Show Available", true, desc = "Show waypoints for available bosses (white)").withDependency { waypointStatusDropdown }
+    private val showFighting by BooleanSetting("Show Fighting", true, desc = "Show waypoints for bosses being fought (green)").withDependency { waypointStatusDropdown }
+    private val showPortal by BooleanSetting("Show Portal", true, desc = "Show waypoints for defeated bosses with portal (gold)").withDependency { waypointStatusDropdown }
     
     private val quickTeleportKey by KeybindSetting("Quick Teleport", GLFW.GLFW_KEY_Y, desc = "Teleport to player at boss when looking at waypoint")
         .onPress { handleQuickTeleport() }
@@ -181,12 +179,9 @@ object TrackerModule : Module(
             // Update renderer settings
             RendererWaypoints.showWaypoints = showWaypoints
             RendererWaypoints.waypointBeams = waypointBeams
-            RendererWaypoints.maxTextScale = maxTextScale
             RendererWaypoints.showAvailable = showAvailable
             RendererWaypoints.showFighting = showFighting
             RendererWaypoints.showPortal = showPortal
-            RendererWaypoints.maxRenderDistance = maxRenderDistance
-            RendererWaypoints.fadeDistance = fadeDistance
             
             // Update HUD settings
             RendererHUD.showHud = showHud

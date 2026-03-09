@@ -6,6 +6,7 @@ import me.melinoe.Melinoe
 import me.melinoe.events.RenderEvent
 import me.melinoe.events.core.on
 import me.melinoe.utils.Color
+import me.melinoe.utils.Color.Companion.multiplyAlpha
 import me.melinoe.utils.component1
 import me.melinoe.utils.component2
 import me.melinoe.utils.component3
@@ -17,6 +18,7 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import kotlin.math.cos
 import kotlin.math.sin
+
 
 private const val DEPTH = 0
 private const val NO_DEPTH = 1
@@ -265,12 +267,11 @@ fun RenderEvent.Extract.drawStyledBox(
     style: Int = 1,
     depth: Boolean = true
 ) {
-    val outlineColor = Color(color.red, color.green, color.blue, 1f)
     when (style) {
-        0 -> drawWireFrameBox(aabb, outlineColor, depth = depth)
+        0 -> drawWireFrameBox(aabb, color, depth = depth)
         1 -> {
-            drawFilledBox(aabb, color, depth = depth)
-            drawWireFrameBox(aabb, outlineColor, depth = depth)
+            drawFilledBox(aabb, color.multiplyAlpha(0.5f), depth = depth)
+            drawWireFrameBox(aabb, color, depth = depth)
         }
     }
 }
@@ -285,7 +286,7 @@ fun RenderEvent.Extract.drawStyledBox(
     when (style) {
         0 -> drawWireFrameBox(aabb, outlineColor, depth = depth)
         1 -> {
-            drawFilledBox(aabb, fillColor, depth = depth)
+            drawFilledBox(aabb, fillColor.multiplyAlpha(0.5f), depth = depth)
             drawWireFrameBox(aabb, outlineColor, depth = depth)
         }
     }
@@ -301,12 +302,12 @@ fun RenderEvent.Extract.drawStyledBox(
     when (style.lowercase()) {
         "outline" -> drawWireFrameBox(aabb, outlineColor, depth = depth)
         "filled outline", "filled" -> {
-            drawFilledBox(aabb, fillColor, depth = depth)
+            drawFilledBox(aabb, fillColor.multiplyAlpha(0.5f), depth = depth)
             drawWireFrameBox(aabb, outlineColor, depth = depth)
         }
         else -> {
             // Fallback default
-            drawFilledBox(aabb, fillColor, depth = depth)
+            drawFilledBox(aabb, fillColor.multiplyAlpha(0.5f), depth = depth)
             drawWireFrameBox(aabb, outlineColor, depth = depth)
         }
     }

@@ -13,12 +13,9 @@ object RendererWaypoints {
     
     var showWaypoints = true
     var waypointBeams = true
-    var maxTextScale = 1.0
     var showAvailable = true
     var showFighting = true
     var showPortal = true
-    var maxRenderDistance = 1000.0
-    var fadeDistance = 50.0
     
     /**
      * Render waypoints for all tracked bosses
@@ -65,11 +62,8 @@ object RendererWaypoints {
             val waypoint = BossWaypoint(boss)
             val pos = Vec3(waypoint.pos.x.toDouble(), waypoint.pos.y.toDouble(), waypoint.pos.z.toDouble())
             
-            // Calculate distance for culling
+            // Calculate distance for fade
             val distance = cameraPos.distanceTo(pos)
-            
-            // Distance-based culling
-            if (distance > maxRenderDistance) continue
             
             // Frustum culling
             if (!isInFrustum(pos, camera)) continue
@@ -132,15 +126,9 @@ object RendererWaypoints {
             return 0.0f
         }
         
-        // Fade from 20 to 40 blocks
-        if (distance < Constants.MIN_FADE_DISTANCE + Constants.FADE_RANGE) {
-            val fadeProgress = (distance - Constants.MIN_FADE_DISTANCE) / Constants.FADE_RANGE
-            return fadeProgress.coerceIn(0.0, 1.0).toFloat()
-        }
-        
-        // Fade out when approaching max distance
-        if (distance > maxRenderDistance - fadeDistance) {
-            val fadeProgress = (maxRenderDistance - distance) / fadeDistance
+        // Fade from 20 to (20 + FADE_DISTANCE) blocks
+        if (distance < Constants.MIN_FADE_DISTANCE + Constants.FADE_DISTANCE) {
+            val fadeProgress = (distance - Constants.MIN_FADE_DISTANCE) / Constants.FADE_DISTANCE
             return fadeProgress.coerceIn(0.0, 1.0).toFloat()
         }
         

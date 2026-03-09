@@ -55,8 +55,10 @@ object WaypointRenderer {
         val currentAlpha = alpha * flashAlphaMult
         val currentTextAlpha = textAlpha * flashAlphaMult
         
-        // Render filled box at waypoint location
-        renderFilledBox(poseStack, bufferSource, camera, pos, color, currentAlpha)
+        // Render filled box at waypoint location (only if beams are enabled)
+        if (showBeam) {
+            renderFilledBox(poseStack, bufferSource, camera, pos, color, currentAlpha)
+        }
         
         // Render beacon beam
         if (showBeam) {

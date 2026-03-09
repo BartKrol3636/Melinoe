@@ -29,17 +29,17 @@ object HitboxModule : Module(
     
     private val renderStyle by SelectorSetting("Render Style", "Filled Outline", listOf("Outline", "Filled Outline"), desc = "Style of the box.")
     
-    private val yourselfSetting by BooleanSetting("Yourself", true, desc = "Render hitbox for yourself")
-    private val yourselfColor by ColorSetting("Yourself Color", Color(0x594C2882), true, desc = "Color of your hitbox").withDependency { yourselfSetting }
+    private val personalSetting by BooleanSetting("Personal", true, desc = "Render hitbox for yourself")
+    private val yourselfColor by ColorSetting("Personal Color", Color(0xFF4C2882.toInt()), true, desc = "Color of your hitbox").withDependency { personalSetting }
     
-    private val playersSetting by BooleanSetting("Players", true, desc = "Render hitboxes for other players")
-    private val playersColor by ColorSetting("Players Color", Color(0x59283582), true, desc = "Color of player hitboxes").withDependency { playersSetting }
+    private val otherPlayersSetting by BooleanSetting("Other Players", true, desc = "Render hitboxes for other players")
+    private val playersColor by ColorSetting("Other Players Color", Color(0xFF283582.toInt()), true, desc = "Color of player hitboxes").withDependency { otherPlayersSetting }
     
     private val mobsSetting by BooleanSetting("Mobs", true, desc = "Render hitboxes for mobs")
-    private val mobsColor by ColorSetting("Mobs Color", Color(0x59B23939), true, desc = "Color of mob hitboxes").withDependency { mobsSetting }
+    private val mobsColor by ColorSetting("Mobs Color", Color(0xFFB23939.toInt()), true, desc = "Color of mob hitboxes").withDependency { mobsSetting }
     
     private val itemsSetting by BooleanSetting("Items", true, desc = "Render hitboxes for items")
-    private val itemsColor by ColorSetting("Items Color", Color(0x5939B293), true, desc = "Color of item hitboxes").withDependency { itemsSetting }
+    private val itemsColor by ColorSetting("Items Color", Color(0xFF39B293.toInt()), true, desc = "Color of item hitboxes").withDependency { itemsSetting }
     
     private val hideArmorStandsSetting by BooleanSetting("Hide Armor Stands", true, desc = "Don't render hitboxes for armor stands")
     
@@ -51,14 +51,11 @@ object HitboxModule : Module(
             val player = mc.player ?: return@on
             
             // Render player's own hitbox (only in third person)
-            if (yourselfSetting && mc.options.cameraType != CameraType.FIRST_PERSON) {
+            if (personalSetting && mc.options.cameraType != CameraType.FIRST_PERSON) {
                 // Use interpolated render bounding box for smooth movement
                 val box = player.renderBoundingBox
                 
-                // Outline uses the same color but with 100% opacity (1f)
-                val outlineColor = Color(yourselfColor.red, yourselfColor.green, yourselfColor.blue, 1f)
-                
-                drawStyledBox(box, yourselfColor, outlineColor, renderStyle, true)
+                drawStyledBox(box, yourselfColor, yourselfColor, renderStyle, true)
             }
             
             // Iterate through all other entities in the level
@@ -72,7 +69,7 @@ object HitboxModule : Module(
                 // Filter entity types based on settings and get color
                 val boxColor = when (entity) {
                     is Player -> {
-                        if (!playersSetting) continue
+                        if (!otherPlayersSetting) continue
                         playersColor
                     }
                     is ItemEntity -> {
@@ -97,10 +94,7 @@ object HitboxModule : Module(
                 
                 if (width < minSize || height < minSize || depth < minSize) continue
                 
-                // Outline uses the same color but with 100% opacity (1f)
-                val outlineColor = Color(boxColor.red, boxColor.green, boxColor.blue, 1f)
-                
-                drawStyledBox(box, boxColor, outlineColor, renderStyle, true)
+                drawStyledBox(box, boxColor, boxColor, renderStyle, true)
             }
         }
     }

@@ -33,7 +33,7 @@ object Constants {
     // Rendering
     const val DISTANCE_MARKER = "♦"
     const val MIN_FADE_DISTANCE = 20.0
-    const val FADE_RANGE = 20.0
+    const val FADE_DISTANCE = 50.0
     const val FRUSTUM_DOT_THRESHOLD = -0.2
     
     // Dimensions
