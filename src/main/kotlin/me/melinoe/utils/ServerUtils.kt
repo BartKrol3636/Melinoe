@@ -4,6 +4,7 @@ import me.melinoe.Melinoe
 import me.melinoe.events.core.onReceive
 import me.melinoe.network.ModWebSocket
 import me.melinoe.network.RealmFetcher
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.Util
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket
@@ -71,7 +72,7 @@ object ServerUtils {
             if (serverAddress.contains("telosrealms.com", ignoreCase = true)) {
                 Melinoe.logger.info("[Presence] Joined Telos. Announcing presence...")
                 
-                ModWebSocket.connect(minecraft.user.name)
+                ModWebSocket.connect()
                 RealmFetcher.fetchServers()
             }
         }
@@ -83,6 +84,10 @@ object ServerUtils {
                 Melinoe.logger.info("Disconnected from server. Removing presence...")
                 ModWebSocket.disconnect()
             }
+        }
+
+        ClientLifecycleEvents.CLIENT_STOPPING.register { client ->
+            ModWebSocket.disconnect()
         }
     }
 }

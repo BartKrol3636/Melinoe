@@ -165,7 +165,7 @@ enum class Item(
     SPIRIT_DAGGER(Rarity.ROYAL, "Spirit Dagger", "telos:material/weapon/dagger/ut-spirit", 120),
     ETHEREAL_LONGBOW(Rarity.ROYAL, "Ethereal Longbow", "telos:material/weapon/bow/ut-ethereal", 120),
     SPECTRAL_ARMOUR(Rarity.ROYAL, "Spectral Armour", "telos:material/armour/light/chestplate/ut-spectral", 120),
-    OCEANIC_TURRENT(Rarity.BLOODSHOT, "Oceanic Turrent", "telos:material/ability/shield/ut-torrent", 120),
+    OCEANIC_TORRENT(Rarity.BLOODSHOT, "Oceanic Torrent", "telos:material/ability/shield/ut-torrent", 120),
     MINI_ILLUSIONIST(Rarity.COMPANION, "Mini Illusionist", "telos:material/pet/corsairs_conductorium", 120),
     SPECTRAL_STEED(Rarity.COMPANION, "Spectral Steed", "telos:material/mount/corsairs_conductorium", 120),
     SPECTRAL_TIDES_RUNE(Rarity.RUNE, "Rune (Spectral Tides)", "telos:material/rune/corsairs_conductorium", 120),
@@ -239,6 +239,11 @@ enum class Item(
     TARTALINK(Rarity.COMPANION, "Tartalink", "telos:material/pet/tartarus", 120),
     EMBERAPTOR(Rarity.COMPANION, "Emberaptor", "telos:material/mount/tartarus", 120),
     PENTACURSE_RUNE(Rarity.RUNE, "Rune (Pentacurse)", "telos:material/rune/tartarus", 120),
+    
+    // Raphael's Castle (Dark Champions)
+    DARK_GUARDIAN_SWORD(Rarity.ROYAL, "Dark Guardian Sword", "telos:material/weapon/sword/ut-guardian", 120),
+    SLOW_TOUCH_ORB(Rarity.ROYAL, "Slow Touch Orb", "telos:material/ability/orb/ut-slow", 120),
+    CORRUPTED_CHAPS(Rarity.ROYAL, "Corrupted Chaps", "telos:material/armour/light/leggings/ut-corrupted", 120),
 
     // Raphael's Chamber (Raphael)
     CALAMITY(Rarity.BLOODSHOT, "Calamity", "telos:material/weapon/sceptre/ut-onyx", 75),
