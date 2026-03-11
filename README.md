@@ -4,7 +4,7 @@
 
 <div align="center">
 
-[![Discord](https://img.shields.io/discord/1424931385956761742?style=for-the-badge&logo=discord&logoColor=white&color=5865F2&label=Discord)](https://discord.gg/YdQRJt5Z2U)
+[![Discord](https://img.shields.io/discord/1459009897680212032?style=for-the-badge&logo=discord&logoColor=white&color=5865F2&label=Discord)](https://discord.gg/Nxhmxjt3kR)
 [![Modrinth](https://img.shields.io/modrinth/dt/Melinoe?style=for-the-badge&logo=modrinth&logoColor=white&color=00AF5C&label=Modrinth)](https://modrinth.com/mod/Melinoe)
 [![Downloads](https://img.shields.io/github/downloads/NoWayItzJoey/Melinoe/total?style=for-the-badge&logo=github&color=4078c0&label=Downloads)](https://github.com/NoWayItzJoey/Melinoe/releases)
 [![Version](https://img.shields.io/github/v/release/NoWayItzJoey/Melinoe?include_prereleases&style=for-the-badge&logo=github&color=4078c0&label=Version)](https://github.com/NoWayItzJoey/Melinoe/releases/latest)
@@ -16,4 +16,4 @@ If you have any questions regarding the mod, please feel free to ask in the Disc
 
 To open the main menu, use Right-Shift or `/melinoe` in chat.
 
-Suggestions and bug reports are welcome; please use the [Discord](https://discord.gg/YdQRJt5Z2U) for that.
+Suggestions and bug reports are welcome; please use the [Discord](https://discord.gg/Nxhmxjt3kR) for that.
