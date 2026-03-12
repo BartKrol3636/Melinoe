@@ -61,7 +61,7 @@ object PityCounterConfig {
                 val safeName = item.displayName.replace("'", "\\'")
                 
                 // Add the sprite icon using the item's texture path
-                "<sprite:\"minecraft:blocks\":\"${item.texturePath}\"> $color$safeName<gray>: <white>$pity</white>"
+                "<white><sprite:\"minecraft:blocks\":\"${item.texturePath}\"></white> $color$safeName<gray>: <white>$pity</white>"
             }
             
             "<hover:show_text:'$hoverText'><white>$icon</white></hover>"

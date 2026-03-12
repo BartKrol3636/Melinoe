@@ -143,7 +143,7 @@ enum class BossData(
         Item.BLOSSOM_BLADE, Item.DILAPIDATED_SKULL, Item.GREATWOOD_GREAVES, Item.BOOK_OF_LIFE,
         Item.ELDER_ENT, Item.WOODLAND_MANTIBANE, Item.NATURE_RUNE
     )),
-    SHADOWFLARE("Shadowflare", null, BossType.DUNGEON, arrayOf(
+    SOLARFLARE("Solarflare", null, BossType.DUNGEON, arrayOf(
         Item.AERIAL_STAFF, Item.ORB_OF_PURITY, Item.PHOENIX_PLATE, Item.RESURGENCE,
         Item.DRAGON_WARRIOR, Item.SUNFLARE, Item.SOL_RUNE
     )),

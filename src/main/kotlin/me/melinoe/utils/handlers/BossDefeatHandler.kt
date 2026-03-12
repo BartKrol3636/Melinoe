@@ -204,8 +204,9 @@ object BossDefeatHandler {
         val finalHeader = Component.literal(headerSpaces).append(headerComponent ?: "<yellow><bold>$strippedValue</bold></yellow>".toNative())
         Melinoe.mc.execute { Melinoe.mc.gui?.chat?.addMessage(finalHeader) }
         
-        // Space prior to either the Timer or Pity Module
-        if (pityLines.isNotEmpty() || timerLines.isNotEmpty()) {
+        // Space prior to either the Timer or Pity Module (only for world bosses)
+        val isWorldBoss = bossData?.bossType == BossType.WORLD
+        if (isWorldBoss && (pityLines.isNotEmpty() || timerLines.isNotEmpty())) {
             Melinoe.mc.execute { Melinoe.mc.gui?.chat?.addMessage(" ".toNative()) }
         }
         

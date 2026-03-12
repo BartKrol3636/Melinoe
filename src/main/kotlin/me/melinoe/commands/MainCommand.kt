@@ -111,7 +111,7 @@ val mainCommand = Commodore("melinoe", "m", "mel") {
                     val pity = DataConfig.getPityCounter(item.name)
                     val texture = item.texturePath
                     
-                    append("<sprite:\"minecraft:blocks\":\"$texture\"> <red>$coloredName</red><dark_gray>:</dark_gray> <gray>$pity\n")
+                    append("<white><sprite:\"minecraft:blocks\":\"$texture\"></white> $coloredName<dark_gray>:</dark_gray> <gray>$pity\n")
                 }
             }
             

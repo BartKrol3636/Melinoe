@@ -9,7 +9,7 @@ import java.util.regex.Pattern
  */
 object ItemUtils {
 
-    private val ITEM_RANGE_PATTERN = Pattern.compile("Range: (\\d+(\\.\\d+)?)")
+    private val ITEM_RANGE_PATTERN = Pattern.compile("Range: (-?\\d+(\\.\\d+)?)")
     private val COOLDOWN_PATTERN = Pattern.compile("Cooldown: (\\d+(\\.\\d+)?)s")
 
     /**
@@ -104,6 +104,8 @@ object ItemUtils {
     /**
      * Parse the range value from an item's lore.
      * Returns -1 if no range is found.
+     * Negative ranges (e.g., -6) are converted to positive (6) as they represent
+     * the same range distance but in the opposite direction.
      */
     fun parseItemRange(stack: ItemStack): Float {
         val loreComponent = stack.get(DataComponents.LORE) ?: return -1f
@@ -115,7 +117,9 @@ object ItemUtils {
 
             if (rangeMatcher.find()) {
                 val rangeString = rangeMatcher.group(1)
-                return rangeString?.toFloatOrNull() ?: -1f
+                val parsedRange = rangeString?.toFloatOrNull() ?: return -1f
+                // Convert negative ranges to positive (absolute value)
+                return kotlin.math.abs(parsedRange)
             }
         }
 

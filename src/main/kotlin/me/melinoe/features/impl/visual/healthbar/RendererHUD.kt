@@ -73,7 +73,7 @@ class RendererHUD(private val mc: Minecraft) {
         healthText: String,
         textScale: Double,
         textColor: Int,
-        textOutline: Boolean
+        textOutline: Int
     ) {
         val screenPos = cachedScreenPos ?: return
         val player = cachedPlayer ?: return
@@ -212,7 +212,7 @@ class RendererHUD(private val mc: Minecraft) {
         barWidth: Float,
         barHeight: Float,
         textColor: Int,
-        textOutline: Boolean,
+        textOutline: Int,
         textPosition: Int
     ) {
         val font = mc.font
@@ -236,22 +236,36 @@ class RendererHUD(private val mc: Minecraft) {
             -font.lineHeight / 2f
         }
         
-        // Draw outline
-        if (textOutline) {
-            val outlineColor = 0xFF000000.toInt()
-            for (offsetX in -1..1) {
-                for (offsetY in -1..1) {
-                    if (offsetX == 0 && offsetY == 0) continue
-                    guiGraphics.drawString(
-                        font,
-                        healthText,
-                        (textX + offsetX).toInt(),
-                        (textY + offsetY).toInt(),
-                        outlineColor,
-                        false
-                    )
+        // Draw outline or shadow based on mode
+        when (textOutline) {
+            1 -> { // Shadow
+                val shadowColor = 0xFF000000.toInt()
+                guiGraphics.drawString(
+                    font,
+                    healthText,
+                    (textX + 1).toInt(),
+                    (textY + 1).toInt(),
+                    shadowColor,
+                    false
+                )
+            }
+            2 -> { // Outline
+                val outlineColor = 0xFF000000.toInt()
+                for (offsetX in -1..1) {
+                    for (offsetY in -1..1) {
+                        if (offsetX == 0 && offsetY == 0) continue
+                        guiGraphics.drawString(
+                            font,
+                            healthText,
+                            (textX + offsetX).toInt(),
+                            (textY + offsetY).toInt(),
+                            outlineColor,
+                            false
+                        )
+                    }
                 }
             }
+            // 0 -> None, no additional rendering
         }
         
         // Draw main text

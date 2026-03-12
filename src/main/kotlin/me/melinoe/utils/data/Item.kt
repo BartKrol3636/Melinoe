@@ -214,7 +214,7 @@ enum class Item(
     WOODLAND_MANTIBANE(Rarity.COMPANION, "Woodland Mantibane", "telos:material/mount/illarius_hideout", 120),
     NATURE_RUNE(Rarity.RUNE, "Rune (Nature)", "telos:material/rune/illarius_hideout", 120),
 
-    // The Aviary (Shadowflare)
+    // The Aviary (Solarflare)
     AERIAL_STAFF(Rarity.ROYAL, "Aerial Staff", "telos:material/weapon/staff/ut-aerial", 120),
     ORB_OF_PURITY(Rarity.ROYAL, "Orb of Purity", "telos:material/ability/orb/ut-purity", 120),
     PHOENIX_PLATE(Rarity.ROYAL, "Phoenix Plate", "telos:material/armour/heavy/chestplate/ut-phoenix", 120),

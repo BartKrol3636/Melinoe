@@ -92,10 +92,11 @@ object HealthBarModule : Module(
         Color(0xFFFFFFFF.toInt()),
         desc = "Color of the health text"
     )
-    private val textOutline by BooleanSetting(
+    private val textOutline by SelectorSetting(
         "Text Outline",
-        true,
-        desc = "Enable black outline on health text"
+        "Outline",
+        arrayListOf("None", "Shadow", "Outline"),
+        desc = "Text rendering style: None, Shadow, or Outline"
     )
     
     private val barWidth by NumberSetting(

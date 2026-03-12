@@ -35,7 +35,7 @@ class Renderer3D(private val mc: Minecraft) {
         healthText: String,
         textScale: Double,
         textColor: Int,
-        textOutline: Boolean,
+        textOutline: Int,
         bufferSource: net.minecraft.client.renderer.MultiBufferSource.BufferSource
     ) {
         // Calculate player position with interpolation
@@ -195,7 +195,7 @@ class Renderer3D(private val mc: Minecraft) {
         barHeight: Float,
         textScale: Float,
         textColor: Int,
-        textOutline: Boolean,
+        textOutline: Int,
         textPosition: Int
     ) {
         matrices.pushPose()
@@ -225,26 +225,44 @@ class Renderer3D(private val mc: Minecraft) {
             -font.lineHeight * 0.4f
         }
         
-        // Draw outline
-        if (textOutline) {
-            val outlineColor = 0xFF000000.toInt()
-            for (offsetX in -1..1) {
-                for (offsetY in -1..1) {
-                    if (offsetX == 0 && offsetY == 0) continue
-                    font.drawInBatch(
-                        healthText,
-                        textX + offsetX,
-                        textY + offsetY,
-                        outlineColor,
-                        false,
-                        scaledMatrix,
-                        bufferSource,
-                        net.minecraft.client.gui.Font.DisplayMode.SEE_THROUGH,
-                        0,
-                        net.minecraft.client.renderer.LightTexture.FULL_BRIGHT
-                    )
+        // Draw outline or shadow based on mode
+        when (textOutline) {
+            1 -> { // Shadow
+                val shadowColor = 0xFF000000.toInt()
+                font.drawInBatch(
+                    healthText,
+                    textX + 1,
+                    textY + 1,
+                    shadowColor,
+                    false,
+                    scaledMatrix,
+                    bufferSource,
+                    net.minecraft.client.gui.Font.DisplayMode.SEE_THROUGH,
+                    0,
+                    net.minecraft.client.renderer.LightTexture.FULL_BRIGHT
+                )
+            }
+            2 -> { // Outline
+                val outlineColor = 0xFF000000.toInt()
+                for (offsetX in -1..1) {
+                    for (offsetY in -1..1) {
+                        if (offsetX == 0 && offsetY == 0) continue
+                        font.drawInBatch(
+                            healthText,
+                            textX + offsetX,
+                            textY + offsetY,
+                            outlineColor,
+                            false,
+                            scaledMatrix,
+                            bufferSource,
+                            net.minecraft.client.gui.Font.DisplayMode.SEE_THROUGH,
+                            0,
+                            net.minecraft.client.renderer.LightTexture.FULL_BRIGHT
+                        )
+                    }
                 }
             }
+            // 0 -> None, no additional rendering
         }
         
         // Draw main text

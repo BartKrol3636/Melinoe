@@ -32,7 +32,7 @@ object AbilityCooldownModule : Module(
     
     private const val BAR_WIDTH = 16
     private const val BAR_HEIGHT = 5
-    private const val BAR_BG_COLOR = 0x80D3D3D3.toInt()
+    private const val BAR_BG_COLOR = 0xC0404040.toInt()
     private const val BAR_BORDER_COLOR = 0xFF252326.toInt()
     private const val BAR_LEFT_OFFSET = 22
     

@@ -147,7 +147,7 @@ val devCommand = Commodore("melinoedev", "mdev") {
         param("boss") {
             suggests {
                 listOf("raphael", "seraphim", "ophanim", "trueseraph", "trueophan",
-                    "sylvaris", "voidedomnipotent", "kurvaros", "shadowflare",
+                    "sylvaris", "voidedomnipotent", "kurvaros", "solarflare",
                     "valerion", "nebula", "prismara", "omnipotent", "silex",
                     "chronos", "warden", "herald", "reaper", "defender", "asmodeus")
             }
