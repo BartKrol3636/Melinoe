@@ -38,9 +38,24 @@ public abstract class HumanoidArmorLayerMixin {
             // Only hide armor for players (AvatarRenderState)
             // This excludes zombies, skeletons, piglins, and other humanoid mobs
             if (humanoidRenderState instanceof AvatarRenderState) {
-                // Check if it's the local player (nameTag is null for local player)
-                boolean isLocalPlayer = humanoidRenderState.nameTag == null;
-                if (isLocalPlayer) {
+                boolean shouldHide = false;
+                
+                switch (equipmentSlot) {
+                    case HEAD:
+                        shouldHide = HideArmorModule.INSTANCE.getHideHelmet();
+                        break;
+                    case CHEST:
+                        shouldHide = HideArmorModule.INSTANCE.getHideChestplate();
+                        break;
+                    case LEGS:
+                        shouldHide = HideArmorModule.INSTANCE.getHideLeggings();
+                        break;
+                    case FEET:
+                        shouldHide = HideArmorModule.INSTANCE.getHideBoots();
+                        break;
+                }
+                
+                if (shouldHide) {
                     ci.cancel();
                 }
             }

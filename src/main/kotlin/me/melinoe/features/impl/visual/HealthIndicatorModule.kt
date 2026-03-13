@@ -23,16 +23,28 @@ object HealthIndicatorModule : Module(
     category = Category.VISUAL,
     description = "Displays warnings and sounds when health is low."
 ) {
+    private data class HealthWarningState(
+        var ticks: Int = 0,
+        var startTime: Long = 0L,
+        var triggered: Boolean = false,
+        var lastSoundTime: Long = 0L
+    )
+    
+    private val lowHpState = HealthWarningState()
+    private val midHpState = HealthWarningState()
+    private var wasInLowHp = false
+    
     private var lastTickCount = 0
-    private var lowHpTicks = 0
-    private var midHpTicks = 0
     
     // Grace Period State
-    private var worldJoinTime = 0L
+    private var isInGracePeriod = false
+    private var gracePeriodEndTime = 0L
     private var previousRealm = ""
     private var previousDimension = ""
-    private var isInGracePeriod = false
-    private var lastMaxHealth = 0f
+    
+    // Main Mode Settings
+    private val warningMode = registerSetting(SelectorSetting("Warning Mode", "Continuous", listOf("Continuous", "Periodic"), "Continuous loops, Periodic plays once for a duration"))
+    private val periodicDuration by NumberSetting("Periodic Duration", 1.0, 0.5, 3.0, 0.5, "Duration in seconds for periodic mode").withDependency { warningMode.selected == "Periodic" }
     
     // Low Health Warning
     val enableLowHealth by BooleanSetting("Enable Low HP Warning", true, "Enable low health warning")
@@ -52,9 +64,16 @@ object HealthIndicatorModule : Module(
             if (player == null || isInGracePeriod) return@HUDSetting 0 to 0
             val healthPercent = (player.health / player.maxHealth) * 100f
             if (healthPercent > lowHealthThreshold) return@HUDSetting 0 to 0
+            
+            // Check periodic mode
+            if (warningMode.selected == "Periodic") {
+                val currentTime = System.currentTimeMillis()
+                val elapsed = (currentTime - lowHpState.startTime) / 1000.0
+                if (elapsed > periodicDuration) return@HUDSetting 0 to 0
+            }
         }
         
-        val baseColor = 0xFFFF0000.toInt()
+        val baseColor = lowHealthColor.rgba
         val displayColor = if (titleFlashing && isFlashPhase()) lightenColor(baseColor, 0.3f) else baseColor
         
         val component = Component.literal(lowHealthText).withStyle(Style.EMPTY.withColor(displayColor))
@@ -82,9 +101,16 @@ object HealthIndicatorModule : Module(
             val healthPercent = (player.health / player.maxHealth) * 100f
             // Hide mid HP title if low HP title is active (priority)
             if (healthPercent > mediumHealthThreshold || (enableLowHealth && healthPercent <= lowHealthThreshold)) return@HUDSetting 0 to 0
+            
+            // Check periodic mode
+            if (warningMode.selected == "Periodic") {
+                val currentTime = System.currentTimeMillis()
+                val elapsed = (currentTime - midHpState.startTime) / 1000.0
+                if (elapsed > periodicDuration) return@HUDSetting 0 to 0
+            }
         }
         
-        val baseColor = 0xFFFFAA00.toInt()
+        val baseColor = mediumHealthColor.rgba
         val displayColor = if (titleFlashing && isFlashPhase()) lightenColor(baseColor, 0.3f) else baseColor
         
         val component = Component.literal(mediumHealthText).withStyle(Style.EMPTY.withColor(displayColor))
@@ -96,22 +122,23 @@ object HealthIndicatorModule : Module(
     // Title Settings
     private val titleSettingsDropdown by DropdownSetting("Title Settings", false)
     private val lowHealthText by StringSetting("Low HP Text", "LOW HEALTH!", desc = "Text to display for low health").withDependency { titleSettingsDropdown }
+    private val lowHealthColor by ColorSetting("Low HP Color", me.melinoe.utils.Color(0xFFFF0000.toInt()), desc = "Color of the low health title").withDependency { titleSettingsDropdown }
     private val mediumHealthText by StringSetting("Mid HP Text", "MEDIUM HEALTH", desc = "Text to display for medium health").withDependency { titleSettingsDropdown }
+    private val mediumHealthColor by ColorSetting("Mid HP Color", me.melinoe.utils.Color(0xFFFFAA00.toInt()), desc = "Color of the medium health title").withDependency { titleSettingsDropdown }
     private val titleFlashing by BooleanSetting("Text Flashing", true, "Flash the warning text").withDependency { titleSettingsDropdown }
     
     // Sound Settings
     private val soundSettingsDropdown by DropdownSetting("Sound Settings", false)
     
     private val lowHealthSoundSettings = createSoundSettings("Low HP Sound", "entity.experience_orb.pickup", { soundSettingsDropdown }, "Play Low HP Sound")
-    private val lowHealthSoundCooldown by NumberSetting("Low HP Sound Cooldown", 5.0, 1.0, 40.0, 1.0, "Cooldown for the low HP sound").withDependency { soundSettingsDropdown }
     
     private val mediumHealthSoundSettings = createSoundSettings("Mid HP Sound", "block.note_block.pling", { soundSettingsDropdown }, "Play Mid HP Sound")
-    private val mediumHealthSoundCooldown by NumberSetting("Mid HP Sound Cooldown", 10.0, 1.0, 40.0, 1.0, "Cooldown for the medium HP sound").withDependency { soundSettingsDropdown }
     
     init {
         on<WorldLoadEvent> {
-            lowHpTicks = 0
-            midHpTicks = 0
+            lowHpState.apply { ticks = 0; startTime = 0L; triggered = false; lastSoundTime = 0L }
+            midHpState.apply { ticks = 0; startTime = 0L; triggered = false; lastSoundTime = 0L }
+            wasInLowHp = false
             handleWorldChange()
         }
         
@@ -122,9 +149,14 @@ object HealthIndicatorModule : Module(
             val maxHealth = player.maxHealth
             val healthPercentage = (player.health / maxHealth) * 100f
             
-            // Grace Period on World Entering
-            updateGracePeriod(maxHealth)
-            if (isInGracePeriod) return@on
+            // Check if grace period has expired
+            if (isInGracePeriod) {
+                if (System.currentTimeMillis() >= gracePeriodEndTime) {
+                    isInGracePeriod = false
+                } else {
+                    return@on // Still in grace period
+                }
+            }
             
             // Continuous Loop
             if (player.tickCount != lastTickCount) {
@@ -133,34 +165,25 @@ object HealthIndicatorModule : Module(
                 val inLowHp = enableLowHealth && healthPercentage <= lowHealthThreshold
                 val inMidHp = enableMediumHealth && healthPercentage <= mediumHealthThreshold && !inLowHp
                 
+                val currentTime = System.currentTimeMillis()
+                val soundInterval = 250L // Match text flashing speed (250ms)
+                
+                // Low Health Logic
+                handleHealthWarning(lowHpState, inLowHp, lowHealthSoundSettings, currentTime, soundInterval)
                 if (inLowHp) {
-                    if (lowHpTicks % lowHealthSoundCooldown.toInt() == 0) playWarningSound(lowHealthSoundSettings())
-                    lowHpTicks++
-                } else {
-                    lowHpTicks = 0
+                    wasInLowHp = true
+                } else if (!inMidHp) {
+                    // Only reset wasInLowHp if we're above medium threshold
+                    wasInLowHp = false
                 }
                 
-                if (inMidHp) {
-                    if (midHpTicks % mediumHealthSoundCooldown.toInt() == 0) playWarningSound(mediumHealthSoundSettings())
-                    midHpTicks++
-                } else {
-                    midHpTicks = 0
+                // Medium Health Logic
+                handleHealthWarning(midHpState, inMidHp, mediumHealthSoundSettings, currentTime, soundInterval, allowTrigger = !wasInLowHp)
+                if (!inMidHp && healthPercentage > mediumHealthThreshold) {
+                    // Reset wasInLowHp when we go above medium threshold
+                    wasInLowHp = false
                 }
             }
-        }
-    }
-    
-    // Grace Period
-    private fun updateGracePeriod(currentMaxHealth: Float) {
-        val currentTime = System.currentTimeMillis()
-        val timeBasedGrace = currentTime - worldJoinTime < 2000L // 2 seconds grace period
-        val healthJustChanged = currentMaxHealth != lastMaxHealth
-        
-        if (timeBasedGrace || healthJustChanged) {
-            lastMaxHealth = currentMaxHealth
-            if (currentMaxHealth != 20f) isInGracePeriod = false
-        } else {
-            lastMaxHealth = currentMaxHealth
         }
     }
     
@@ -169,20 +192,48 @@ object HealthIndicatorModule : Module(
         val level = mc.level
         val currentDimension = level?.dimension()?.location()?.path ?: ""
         
-        if (currentRealm.isEmpty() || currentDimension.isEmpty()) return
+        // Skip if empty
+        if (currentRealm.isEmpty() || currentDimension.isEmpty()) {
+            previousRealm = ""
+            previousDimension = ""
+            return
+        }
         
-        if (previousRealm.isEmpty() || previousDimension.isEmpty() ||
-            currentDimension.equalsOneOf("hub", "daily") ||
-            (previousDimension.equalsOneOf("hub", "daily") && currentDimension == "realm") ||
-            (previousDimension == "realm" && currentDimension == "realm" && currentRealm != previousRealm)) {
-            
-            worldJoinTime = System.currentTimeMillis()
-            isInGracePeriod = true
-            lastMaxHealth = 0f
+        // First load
+        if (previousRealm.isEmpty()) {
+            previousRealm = currentRealm
+            previousDimension = currentDimension
+            if (currentDimension == "realm") {
+                startGracePeriod()
+            }
+            return
+        }
+        
+        // No change
+        if (currentRealm == previousRealm && currentDimension == previousDimension) {
+            return
+        }
+        
+        // Check for realm entry transitions
+        val wasInHub = previousDimension.equalsOneOf("hub", "daily")
+        val isInRealm = currentDimension == "realm"
+        
+        // Entering realm from hub/daily
+        if (isInRealm && wasInHub) {
+            startGracePeriod()
+        }
+        // Switching between different realms
+        else if (previousDimension == "realm" && isInRealm && currentRealm != previousRealm) {
+            startGracePeriod()
         }
         
         previousRealm = currentRealm
         previousDimension = currentDimension
+    }
+    
+    private fun startGracePeriod() {
+        isInGracePeriod = true
+        gracePeriodEndTime = System.currentTimeMillis() + 2000L // 2 second grace period
     }
     
     private fun playWarningSound(soundData: Triple<String, Float, Float>) {
@@ -198,8 +249,8 @@ object HealthIndicatorModule : Module(
     }
     
     private fun isFlashPhase(): Boolean {
-        // Flashes every 300 milliseconds
-        return (System.currentTimeMillis() / 300) % 2 == 0L
+        // Flashes every 250 milliseconds
+        return (System.currentTimeMillis() / 250) % 2 == 0L
     }
     
     private fun lightenColor(color: Int, amount: Float): Int {
@@ -214,6 +265,44 @@ object HealthIndicatorModule : Module(
         return (a shl 24) or (newR shl 16) or (newG shl 8) or newB
     }
     
+    private fun handleHealthWarning(
+        state: HealthWarningState,
+        isActive: Boolean,
+        soundSettings: () -> Triple<String, Float, Float>,
+        currentTime: Long,
+        soundInterval: Long,
+        allowTrigger: Boolean = true
+    ) {
+        if (isActive) {
+            if (warningMode.selected == "Continuous") {
+                // Continuous mode - loop sounds at flash rate
+                if (currentTime - state.lastSoundTime >= soundInterval) {
+                    playWarningSound(soundSettings())
+                    state.lastSoundTime = currentTime
+                }
+                state.ticks++
+            } else {
+                // Periodic mode - play sounds during duration at flash rate
+                if (!state.triggered && allowTrigger) {
+                    state.startTime = currentTime
+                    playWarningSound(soundSettings())
+                    state.lastSoundTime = currentTime
+                    state.triggered = true
+                } else if (state.triggered && allowTrigger) {
+                    val elapsed = (currentTime - state.startTime) / 1000.0
+                    if (elapsed <= periodicDuration && currentTime - state.lastSoundTime >= soundInterval) {
+                        playWarningSound(soundSettings())
+                        state.lastSoundTime = currentTime
+                    }
+                }
+            }
+        } else {
+            state.ticks = 0
+            state.triggered = false
+            state.lastSoundTime = 0L
+        }
+    }
+    
     override fun onEnable() {
         super.onEnable()
         Melinoe.logger.info("Health Indicator enabled")
@@ -221,8 +310,9 @@ object HealthIndicatorModule : Module(
     
     override fun onDisable() {
         super.onDisable()
-        lowHpTicks = 0
-        midHpTicks = 0
+        lowHpState.apply { ticks = 0; startTime = 0L; triggered = false; lastSoundTime = 0L }
+        midHpState.apply { ticks = 0; startTime = 0L; triggered = false; lastSoundTime = 0L }
+        wasInLowHp = false
         isInGracePeriod = false
         Melinoe.logger.info("Health Indicator disabled")
     }
