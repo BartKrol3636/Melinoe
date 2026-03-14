@@ -22,6 +22,7 @@
     "mixins.ClientLevelMixin",
     "mixins.PlayerTabOverlayMixin",
     "mixins.SoundSystemMixin",
+    "mixins.GuiMixin",
     "accessors.AbstractContainerScreenAccessor",
     "accessors.CompositeRenderTypeAccessor",
     "accessors.ServerboundInteractPacketAccessor"
