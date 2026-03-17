@@ -13,6 +13,8 @@ import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sign
 
 object HudManager : Screen(Component.literal("HUD Manager")) {
@@ -36,24 +38,73 @@ object HudManager : Screen(Component.literal("HUD Manager")) {
         super.init()
     }
 
+    private fun isShiftPressed(): Boolean {
+        val windowHandle = Melinoe.mc.window.handle()
+        return GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ||
+                GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS
+    }
+
     override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, deltaTicks: Float) {
         super.render(context, mouseX, mouseY, deltaTicks)
 
+        val sw = Melinoe.mc.window.screenWidth
+        val sh = Melinoe.mc.window.screenHeight
+
         dragging?.let {
-            val sw = Melinoe.mc.window.screenWidth
-            val sh = Melinoe.mc.window.screenHeight
-            val newScreenX = (melinoeMouseX + deltaX).coerceIn(0f, (sw - (it.width * it.scale))).toInt()
-            val newScreenY = (melinoeMouseY + deltaY).coerceIn(0f, (sh - (it.height * it.scale))).toInt()
+            val snapThreshold = 15f // Distance needed to trigger a snap
+            val actualWidth = it.width * it.scale
+            val actualHeight = it.height * it.scale
+
+            var newScreenX = (melinoeMouseX + deltaX)
+            var newScreenY = (melinoeMouseY + deltaY)
+
+            // Shift Snapping Logic
+            if (isShiftPressed()) {
+                val centerX = sw / 2f
+                val centerY = sh / 2f
+
+                // Calculate the exact center point of the dragged element
+                val elemCenterX = newScreenX + actualWidth / 2f
+                val elemCenterY = newScreenY + actualHeight / 2f
+
+                // Snap X axis to vertical center line
+                if (abs(elemCenterX - centerX) < snapThreshold) {
+                    newScreenX = centerX - actualWidth / 2f
+                }
+
+                // Snap Y axis to horizontal center line
+                if (abs(elemCenterY - centerY) < snapThreshold) {
+                    newScreenY = centerY - actualHeight / 2f
+                }
+            }
+
+            // Keep within window bounds
+            newScreenX = newScreenX.coerceIn(0f, sw - actualWidth)
+            newScreenY = newScreenY.coerceIn(0f, sh - actualHeight)
+
             // Update anchors based on which half the element is on
-            it.anchorRight = newScreenX + (it.width * it.scale) / 2f > sw / 2f
-            it.anchorBottom = newScreenY + (it.height * it.scale) / 2f > sh / 2f
-            it.setScreenX(newScreenX)
-            it.setScreenY(newScreenY)
+            it.anchorRight = newScreenX + actualWidth / 2f > sw / 2f
+            it.anchorBottom = newScreenY + actualHeight / 2f > sh / 2f
+
+            it.setScreenX(newScreenX.roundToInt())
+            it.setScreenY(newScreenY.roundToInt())
         }
 
         context.pose().pushMatrix()
         val sf = Melinoe.mc.window.guiScale
-        context.pose().scale(1f / sf, 1f / sf)
+        context.pose().scale(1f / sf.toFloat(), 1f / sf.toFloat())
+
+        // Render shift snap guides natively
+        if (isShiftPressed()) {
+            val centerX = sw / 2
+            val centerY = sh / 2
+            val lineColor = 0x8800FFFF.toInt() // Cyan with alpha
+
+            // Vertical Center Line
+            context.fill(centerX, 0, centerX + 1, sh, lineColor)
+            // Horizontal Center Line
+            context.fill(0, centerY, sw, centerY + 1, lineColor)
+        }
 
         for (hud in hudSettingsCache) {
             if (hud.isEnabled) hud.value.draw(context, true)
