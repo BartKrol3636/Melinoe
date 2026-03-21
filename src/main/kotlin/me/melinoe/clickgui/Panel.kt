@@ -15,6 +15,11 @@ import kotlin.math.floor
 
 /**
  * Renders all the panels.
+ *
+ * Backend made by Aton, with some changes
+ * Design mostly made by Stivais
+ *
+ * @author Stivais, Aton
  */
 class Panel(private val category: Category) {
 

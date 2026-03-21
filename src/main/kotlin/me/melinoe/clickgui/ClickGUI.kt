@@ -24,6 +24,11 @@ import me.melinoe.utils.ui.mouseY as melinoeMouseY
 
 /**
  * ClickGUI for Melinoe.
+ *
+ * Backend made by Aton, with some changes
+ * Design mostly made by Stivais
+ *
+ * @author Stivais, Aton
  */
 object ClickGUI : Screen(Component.literal("Click GUI")) {
 
