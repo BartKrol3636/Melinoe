@@ -179,6 +179,7 @@ object ModuleManager {
             me.melinoe.features.impl.misc.DiscordRPCModule,
             me.melinoe.features.impl.misc.KeybindsModule,
             me.melinoe.features.impl.misc.HideHeldTooltipsModule,
+            me.melinoe.features.impl.misc.ChatEmojisModule,
 
             // Utility
             me.melinoe.features.impl.combat.AutoSprintModule,

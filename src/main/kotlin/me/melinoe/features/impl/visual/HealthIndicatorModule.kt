@@ -77,8 +77,13 @@ object HealthIndicatorModule : Module(
         val displayColor = if (titleFlashing && isFlashPhase()) lightenColor(baseColor, 0.3f) else baseColor
         
         val component = Component.literal(lowHealthText).withStyle(Style.EMPTY.withColor(displayColor))
-        val textWidth = mc.font.width(component)
-        drawString(mc.font, component, 0, 0, displayColor, true)
+        val displayComponent = if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
+            me.melinoe.utils.EmojiReplacer.replaceIn(component)
+        } else {
+            component
+        }
+        val textWidth = mc.font.width(displayComponent)
+        drawString(mc.font, displayComponent, 0, 0, displayColor, true)
         textWidth to mc.font.lineHeight
     }.withDependency { enableLowHealth }
     
@@ -114,8 +119,13 @@ object HealthIndicatorModule : Module(
         val displayColor = if (titleFlashing && isFlashPhase()) lightenColor(baseColor, 0.3f) else baseColor
         
         val component = Component.literal(mediumHealthText).withStyle(Style.EMPTY.withColor(displayColor))
-        val textWidth = mc.font.width(component)
-        drawString(mc.font, component, 0, 0, displayColor, true)
+        val displayComponent = if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
+            me.melinoe.utils.EmojiReplacer.replaceIn(component)
+        } else {
+            component
+        }
+        val textWidth = mc.font.width(displayComponent)
+        drawString(mc.font, displayComponent, 0, 0, displayColor, true)
         textWidth to mc.font.lineHeight
     }.withDependency { enableMediumHealth }
     

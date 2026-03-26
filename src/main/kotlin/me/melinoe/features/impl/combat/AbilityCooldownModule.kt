@@ -245,7 +245,14 @@ object AbilityCooldownModule : Module(
         if (text.isEmpty()) {
             return Component.literal("")
         }
-        return Component.literal(text).withStyle(Style.EMPTY.withColor(textColor))
+        
+        val component = Component.literal(text).withStyle(Style.EMPTY.withColor(textColor))
+        
+        return if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
+            me.melinoe.utils.EmojiReplacer.replaceIn(component)
+        } else {
+            component
+        }
     }
     
     private fun playNotificationSound() {
