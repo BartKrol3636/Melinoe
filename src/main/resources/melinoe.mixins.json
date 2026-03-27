@@ -21,6 +21,7 @@
     "mixins.AbstractContainerScreenMixin",
     "mixins.ChatScreenMixin",
     "mixins.ChatInputSuggestorMixin",
+    "mixins.ChatComponentMixin",
     "mixins.EditBoxMixin",
     "mixins.ClientLevelMixin",
     "mixins.PlayerTabOverlayMixin",

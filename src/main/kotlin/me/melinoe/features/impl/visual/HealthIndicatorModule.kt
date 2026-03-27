@@ -10,6 +10,7 @@ import me.melinoe.features.Category
 import me.melinoe.features.Module
 import me.melinoe.utils.LocalAPI
 import me.melinoe.utils.createSoundSettings
+import me.melinoe.utils.emoji.EmojiReplacer
 import me.melinoe.utils.equalsOneOf
 import me.melinoe.utils.playSoundAtPlayer
 import net.minecraft.network.chat.Component
@@ -77,11 +78,7 @@ object HealthIndicatorModule : Module(
         val displayColor = if (titleFlashing && isFlashPhase()) lightenColor(baseColor, 0.3f) else baseColor
         
         val component = Component.literal(lowHealthText).withStyle(Style.EMPTY.withColor(displayColor))
-        val displayComponent = if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
-            me.melinoe.utils.EmojiReplacer.replaceIn(component)
-        } else {
-            component
-        }
+        val displayComponent = EmojiReplacer.replaceIn(component)
         val textWidth = mc.font.width(displayComponent)
         drawString(mc.font, displayComponent, 0, 0, displayColor, true)
         textWidth to mc.font.lineHeight
@@ -119,11 +116,7 @@ object HealthIndicatorModule : Module(
         val displayColor = if (titleFlashing && isFlashPhase()) lightenColor(baseColor, 0.3f) else baseColor
         
         val component = Component.literal(mediumHealthText).withStyle(Style.EMPTY.withColor(displayColor))
-        val displayComponent = if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
-            me.melinoe.utils.EmojiReplacer.replaceIn(component)
-        } else {
-            component
-        }
+        val displayComponent = EmojiReplacer.replaceIn(component)
         val textWidth = mc.font.width(displayComponent)
         drawString(mc.font, displayComponent, 0, 0, displayColor, true)
         textWidth to mc.font.lineHeight

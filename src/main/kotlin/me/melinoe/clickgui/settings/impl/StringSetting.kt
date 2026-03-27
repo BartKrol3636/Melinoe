@@ -29,7 +29,8 @@ class StringSetting(
 
     private val textInputHandler = TextInputHandler(
         textProvider = { value },
-        textSetter = { value = it }
+        textSetter = { value = it },
+        allowEmojis = true
     )
 
     override fun render(x: Float, y: Float, mouseX: Float, mouseY: Float): Float {

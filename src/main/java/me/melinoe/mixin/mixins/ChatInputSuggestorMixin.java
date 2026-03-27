@@ -1,9 +1,7 @@
 package me.melinoe.mixin.mixins;
 
-import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.Suggestions;
-import me.melinoe.features.impl.misc.ChatEmojisModule;
-import me.melinoe.utils.EmojiSuggestionProvider;
+import me.melinoe.utils.emoji.EmojiSuggestionProvider;
 import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,58 +14,33 @@ import java.util.concurrent.CompletableFuture;
 
 @Mixin(CommandSuggestions.class)
 public abstract class ChatInputSuggestorMixin {
-    
+
     @Shadow private EditBox input;
-    
     @Shadow private CompletableFuture<Suggestions> pendingSuggestions;
-    
     @Shadow public abstract void showSuggestions(boolean narrateFirstSuggestion);
-    
+
     @Inject(method = "updateCommandInfo", at = @At("RETURN"))
     private void melinoe$setEmojiSuggestions(CallbackInfo ci) {
-        if (!ChatEmojisModule.INSTANCE.getEnabled()) {
-            return;
-        }
-        
-        if (input == null) {
-            return;
-        }
-        
-        String text = input.getValue();
-        if (text == null) {
-            return;
-        }
-        
-        if (!EmojiSuggestionProvider.isTypingEmoji(input)) {
-            return;
-        }
-        
-        CompletableFuture<Suggestions> emojiSuggestions = EmojiSuggestionProvider.provideSuggestions(
-            text, input.getCursorPosition()
+        if (this.input == null) return;
+
+        String text = this.input.getValue();
+        if (text == null || text.isEmpty() || text.startsWith("/")) return;
+
+        if (!EmojiSuggestionProvider.INSTANCE.isTypingEmoji(this.input)) return;
+
+        CompletableFuture<Suggestions> emojiSuggestionsFuture = EmojiSuggestionProvider.INSTANCE.provideSuggestions(
+                text, this.input.getCursorPosition()
         );
-        
-        Suggestions emojiSugs = emojiSuggestions.join();
-        if (emojiSugs.getList().isEmpty()) {
-            return;
+
+        // Dynamically merge the mod's suggestions with the server's live suggestion packet
+        if (this.pendingSuggestions != null) {
+            this.pendingSuggestions = this.pendingSuggestions.thenCombine(emojiSuggestionsFuture, (serverSugs, modSugs) ->
+                    EmojiSuggestionProvider.INSTANCE.mergeAndCheckPerks(serverSugs, modSugs)
+            );
+        } else {
+            this.pendingSuggestions = emojiSuggestionsFuture;
         }
-        
-        if (text.startsWith("/") && pendingSuggestions != null && pendingSuggestions.isDone()) {
-            try {
-                Suggestions existing = pendingSuggestions.getNow(null);
-                if (existing != null && !existing.getList().isEmpty()) {
-                    java.util.List<Suggestion> merged = new java.util.ArrayList<>(existing.getList());
-                    merged.addAll(emojiSugs.getList());
-                    pendingSuggestions = CompletableFuture.completedFuture(
-                        new Suggestions(emojiSugs.getRange(), merged)
-                    );
-                    return;
-                }
-            } catch (Exception e) {
-                // If merge fails, just use emoji suggestions
-            }
-        }
-        
-        pendingSuggestions = CompletableFuture.completedFuture(emojiSugs);
+
         this.showSuggestions(false);
     }
 }

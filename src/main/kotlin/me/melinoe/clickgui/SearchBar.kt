@@ -1,10 +1,9 @@
 package me.melinoe.clickgui
 
-import me.melinoe.clickgui.settings.ModuleButton
 import me.melinoe.features.impl.ClickGUIModule
+import me.melinoe.utils.Colors
 import me.melinoe.utils.ui.TextInputHandler
 import me.melinoe.utils.ui.rendering.NVGRenderer
-import me.melinoe.utils.Colors
 import net.minecraft.client.input.CharacterEvent
 import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
@@ -26,7 +25,8 @@ object SearchBar {
 
     private val textInputHandler = TextInputHandler(
         textProvider = { currentSearch },
-        textSetter = { currentSearch = it }
+        textSetter = { currentSearch = it },
+        allowEmojis = false
     )
 
     fun draw(x: Float, y: Float, mouseX: Float, mouseY: Float) {

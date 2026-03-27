@@ -18,6 +18,7 @@ import me.melinoe.events.core.on
 import me.melinoe.utils.Color
 import me.melinoe.utils.ItemUtils
 import me.melinoe.utils.createSoundSettings
+import me.melinoe.utils.emoji.EmojiReplacer
 import me.melinoe.utils.equalsOneOf
 import me.melinoe.utils.playSoundSettings
 import net.minecraft.network.chat.Component
@@ -293,11 +294,7 @@ object NaturesGiftModule : Module(
         
         val component = Component.literal(text).withStyle(Style.EMPTY.withColor(textColor))
         
-        return if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
-            me.melinoe.utils.EmojiReplacer.replaceIn(component)
-        } else {
-            component
-        }
+        return EmojiReplacer.replaceIn(component)
     }
     
     /**

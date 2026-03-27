@@ -59,7 +59,8 @@ class ColorSetting(
 
     private val textInputHandler = TextInputHandler(
         textProvider = { textInputValue },
-        textSetter = { textInputValue = it }
+        textSetter = { textInputValue = it },
+        allowEmojis = false
     )
 
     private var textInputValue

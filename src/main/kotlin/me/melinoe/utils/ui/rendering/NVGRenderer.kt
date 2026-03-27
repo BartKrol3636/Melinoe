@@ -28,19 +28,62 @@ object NVGRenderer {
 
     val defaultFont: Font by lazy {
         try {
-            Font("Default", Melinoe.mc.resourceManager.getResource(ResourceLocation.parse("melinoe:font.ttf")).get().open())
+            Font("Default", mc.resourceManager.getResource(ResourceLocation.parse("melinoe:font.ttf")).get().open())
         } catch (e: Exception) {
             Melinoe.logger.error("Failed to load font: melinoe:font.ttf", e)
-            // Fallback if font not found - create a dummy font
             Font("Default", java.io.ByteArrayInputStream(ByteArray(0)))
         }
     }
 
+    object EmojiData {
+        data class Asset(val path: String, val col: Int, val totalCols: Int)
+        val emojiMap = mutableMapOf<Char, Asset>()
+        
+        init {
+            val providers = listOf(
+                "melinoe:emoji/face_smiling.png" to "\uF400\uF401\uF402\uF403\uF404\uF405\uF406\uF407\uF408\uF409\uF40A\uF40B\uF40C",
+                "melinoe:emoji/face_affection.png" to "\uF40D\uF40E\uF40F\uF410\uF411\uF412",
+                "melinoe:emoji/face_tongue.png" to "\uF413\uF414\uF415\uF416\uF417\uF418",
+                "melinoe:emoji/face_hand.png" to "\uF419\uF41A\uF41B\uF41C\uF41D\uF41E\uF41F",
+                "melinoe:emoji/face_neutral_skeptical.png" to "\uF420\uF421\uF422\uF423\uF424\uF425\uF426\uF427\uF428\uF429\uF42A",
+                "melinoe:emoji/face_sleepy.png" to "\uF42B\uF42C\uF42D\uF42E\uF42F\uF430",
+                "melinoe:emoji/face_unwell.png" to "\uF431\uF432\uF433\uF434\uF435\uF436\uF437",
+                "melinoe:emoji/face_hat.png" to "\uF438",
+                "melinoe:emoji/face_glasses.png" to "\uF439\uF43A\uF43B",
+                "melinoe:emoji/face_concerned.png" to "\uF43C\uF43D\uF43E\uF43F\uF440\uF441\uF442\uF443\uF444\uF445\uF446\uF447\uF448\uF449\uF44A\uF44B\uF44C\uF44D",
+                "melinoe:emoji/face_negative.png" to "\uF44E\uF44F\uF450\uF451",
+                "melinoe:emoji/face_costume.png" to "\uF452\uF453\uF454\uF455",
+                "melinoe:emoji/cat_face.png" to "\uF456\uF457\uF458\uF459\uF45A\uF45B\uF45C\uF45D\uF45E",
+                "melinoe:emoji/monkey_face.png" to "\uF45F\uF460\uF461",
+                "melinoe:emoji/heart.png" to "\uF462\uF463\uF464\uF465\uF466\uF467\uF468\uF469",
+                "melinoe:emoji/emotion.png" to "\uF46A\uF46B\uF46C\uF46D\uF46E",
+                "melinoe:emoji/hand_fingers_open.png" to "\uF46F",
+                "melinoe:emoji/hand_fingers_partial.png" to "\uF470\uF471\uF472\uF473\uF474\uF475",
+                "melinoe:emoji/hand_single_finger.png" to "\uF476\uF477\uF478\uF479\uF47A\uF47B",
+                "melinoe:emoji/hand_fingers_closed.png" to "\uF47C\uF47D\uF47E\uF47F\uF480\uF481",
+                "melinoe:emoji/hands.png" to "\uF482\uF483\uF484\uF485\uF486\uF487\uF488",
+                "melinoe:emoji/body_parts.png" to "\uF48C\uF48D\uF48E\uF48F",
+                "melinoe:emoji/plant_flower.png" to "\uF490",
+                "melinoe:emoji/award_medal.png" to "\uF491\uF492\uF493\uF494",
+                "melinoe:emoji/heart_on_fire_mending_heart.png" to "\uF497\uF498",
+                "melinoe:emoji/emoji.png" to "\uF499\uF49A\uF49B\uF49C\uF49D\uF49E\uF49F\uF4A0\uF4A1\uF4A2\uF4A3\uF4A4\uF4A5\uF4A6\uF4A7\uF4A8\uF4A9\uF4AA\uF4AB\uF4AC\uF4AD\uF4AE\uF4AF\uF4B0\uF4B1"
+            )
+            for ((path, chars) in providers) {
+                val total = chars.length
+                for (i in chars.indices) {
+                    emojiMap[chars[i]] = Asset(path, i, total)
+                }
+            }
+        }
+    }
+    
     private val fontMap = HashMap<Font, NVGFont>()
     private val fontBounds = FloatArray(4)
 
     private val images = HashMap<Image, NVGImage>()
 
+    private val nvgEmojis = mutableMapOf<String, Int>()
+    
     private var scissor: Scissor? = null
     private var drawing: Boolean = false
     private var vg = -1L
@@ -221,29 +264,170 @@ object NVGRenderer {
     }
 
     fun text(text: String, x: Float, y: Float, size: Float, color: Int, font: Font) {
-        nvgFontSize(vg, size)
-        nvgFontFaceId(vg, getFontID(font))
-        color(color)
-        nvgFillColor(vg, nvgColor)
-        nvgText(vg, x, y + .5f, text)
+        var currentX = x
+        val currentText = StringBuilder()
+        
+        for (i in text.indices) {
+            val c = text[i]
+            if (EmojiData.emojiMap.containsKey(c)) {
+                if (currentText.isNotEmpty()) {
+                    val str = currentText.toString()
+                    nvgFontSize(vg, size)
+                    nvgFontFaceId(vg, getFontID(font))
+                    color(color)
+                    nvgFillColor(vg, nvgColor)
+                    nvgText(vg, currentX, y + .5f, str)
+                    currentX += nvgTextBounds(vg, 0f, 0f, str, fontBounds)
+                    currentText.clear()
+                }
+                drawEmoji(c, currentX, y, size)
+                currentX += size + 2f // Standard spacing offset
+            } else {
+                currentText.append(c)
+            }
+        }
+        
+        if (currentText.isNotEmpty()) {
+            val str = currentText.toString()
+            nvgFontSize(vg, size)
+            nvgFontFaceId(vg, getFontID(font))
+            color(color)
+            nvgFillColor(vg, nvgColor)
+            nvgText(vg, currentX, y + .5f, str)
+        }
     }
-
+    
     fun textShadow(text: String, x: Float, y: Float, size: Float, color: Int, font: Font) {
-        nvgFontFaceId(vg, getFontID(font))
-        nvgFontSize(vg, size)
-        color(-16777216)
-        nvgFillColor(vg, nvgColor)
-        nvgText(vg, round(x + 2f), round(y + 2f), text)
-
-        color(color)
-        nvgFillColor(vg, nvgColor)
-        nvgText(vg, round(x), round(y), text)
+        var currentX = x
+        val currentText = StringBuilder()
+        
+        for (i in text.indices) {
+            val c = text[i]
+            if (EmojiData.emojiMap.containsKey(c)) {
+                if (currentText.isNotEmpty()) {
+                    val str = currentText.toString()
+                    nvgFontFaceId(vg, getFontID(font))
+                    nvgFontSize(vg, size)
+                    
+                    color(-16777216)
+                    nvgFillColor(vg, nvgColor)
+                    nvgText(vg, round(currentX + 2f), round(y + 2f), str)
+                    
+                    color(color)
+                    nvgFillColor(vg, nvgColor)
+                    nvgText(vg, round(currentX), round(y), str)
+                    
+                    currentX += nvgTextBounds(vg, 0f, 0f, str, fontBounds)
+                    currentText.clear()
+                }
+                // Draw unshadowed emoji seamlessly
+                drawEmoji(c, round(currentX), round(y), size)
+                currentX += size + 2f
+            } else {
+                currentText.append(c)
+            }
+        }
+        if (currentText.isNotEmpty()) {
+            val str = currentText.toString()
+            nvgFontFaceId(vg, getFontID(font))
+            nvgFontSize(vg, size)
+            
+            color(-16777216)
+            nvgFillColor(vg, nvgColor)
+            nvgText(vg, round(currentX + 2f), round(y + 2f), str)
+            
+            color(color)
+            nvgFillColor(vg, nvgColor)
+            nvgText(vg, round(currentX), round(y), str)
+        }
     }
 
     fun textWidth(text: String, size: Float, font: Font): Float {
-        nvgFontSize(vg, size)
-        nvgFontFaceId(vg, getFontID(font))
-        return nvgTextBounds(vg, 0f, 0f, text, fontBounds)
+        var width = 0f
+        val currentText = StringBuilder()
+        
+        for (i in text.indices) {
+            val c = text[i]
+            if (EmojiData.emojiMap.containsKey(c)) {
+                if (currentText.isNotEmpty()) {
+                    nvgFontSize(vg, size)
+                    nvgFontFaceId(vg, getFontID(font))
+                    width += nvgTextBounds(vg, 0f, 0f, currentText.toString(), fontBounds)
+                    currentText.clear()
+                }
+                width += size + 2f
+            } else {
+                currentText.append(c)
+            }
+        }
+        if (currentText.isNotEmpty()) {
+            nvgFontSize(vg, size)
+            nvgFontFaceId(vg, getFontID(font))
+            width += nvgTextBounds(vg, 0f, 0f, currentText.toString(), fontBounds)
+        }
+        return width
+    }
+    
+    /**
+     * Manually fetches the image bypassing Image.kt to prevent the classloader missing
+     * files located inside ResourcePacks or non-standard asset hierarchies.
+     */
+    private fun getEmojiTextureId(path: String): Int {
+        return nvgEmojis.getOrPut(path) {
+            val location = ResourceLocation.parse(path)
+            
+            // Replicate Minecraft BitmapProvider appending rules just in case
+            val textureLocation = if (location.path.startsWith("textures/")) location else location.withPrefix("textures/")
+            
+            val resourceOpt = mc.resourceManager.getResource(textureLocation)
+            val resource = if (resourceOpt.isPresent) resourceOpt.get() else mc.resourceManager.getResource(location).orElse(null)
+            
+            if (resource == null) {
+                Melinoe.logger.error("Emoji texture not found (bypassing): $path")
+                return@getOrPut -1
+            }
+            
+            resource.open().use { stream ->
+                val bytes = stream.readBytes()
+                val buffer = memAlloc(bytes.size)
+                try {
+                    buffer.put(bytes)
+                    buffer.flip()
+                    
+                    val w = IntArray(1)
+                    val h = IntArray(1)
+                    val channels = IntArray(1)
+                    val imgBuffer = stbi_load_from_memory(buffer, w, h, channels, 4)
+                    
+                    if (imgBuffer != null) {
+                        val id = nvgCreateImageRGBA(vg, w[0], h[0], 0, imgBuffer)
+                        org.lwjgl.stb.STBImage.stbi_image_free(imgBuffer)
+                        id
+                    } else {
+                        Melinoe.logger.error("Failed to decode emoji texture: $path")
+                        -1
+                    }
+                } finally {
+                    memFree(buffer)
+                }
+            }
+        }
+    }
+    
+    private fun drawEmoji(c: Char, x: Float, y: Float, size: Float) {
+        val asset = EmojiData.emojiMap[c] ?: return
+        val imgId = getEmojiTextureId(asset.path)
+        if (imgId == -1) return
+        
+        val iw = size * asset.totalCols
+        val ih = size
+        val ix = x - (asset.col * size)
+        
+        nvgImagePattern(vg, ix, y, iw, ih, 0f, imgId, 1f, nvgPaint)
+        nvgBeginPath(vg)
+        nvgRect(vg, x, y, size, size)
+        nvgFillPaint(vg, nvgPaint)
+        nvgFill(vg)
     }
 
     fun drawWrappedString(

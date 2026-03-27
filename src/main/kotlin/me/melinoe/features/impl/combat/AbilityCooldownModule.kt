@@ -9,6 +9,7 @@ import me.melinoe.features.Category
 import me.melinoe.features.Module
 import me.melinoe.utils.Color
 import me.melinoe.utils.createSoundSettings
+import me.melinoe.utils.emoji.EmojiReplacer
 import me.melinoe.utils.playSoundSettings
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.registries.BuiltInRegistries
@@ -248,11 +249,7 @@ object AbilityCooldownModule : Module(
         
         val component = Component.literal(text).withStyle(Style.EMPTY.withColor(textColor))
         
-        return if (me.melinoe.features.impl.misc.ChatEmojisModule.enabled) {
-            me.melinoe.utils.EmojiReplacer.replaceIn(component)
-        } else {
-            component
-        }
+        return EmojiReplacer.replaceIn(component)
     }
     
     private fun playNotificationSound() {
