@@ -496,6 +496,6 @@ object KeybindsModule : Module(
      * Send an error message for features that only work on Telos
      */
     private fun sendTelosOnlyError(featureName: String) {
-        Message.error("$featureName is only available on <underline>ᴛᴇʟᴏѕʀᴇᴀʟᴍѕ.ᴄᴏᴍ<reset>")
+        Message.error("$featureName is only available on <underlined>ᴛᴇʟᴏѕʀᴇᴀʟᴍѕ.ᴄᴏᴍ</underlined><reset>")
     }
 }

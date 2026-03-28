@@ -39,10 +39,19 @@ internal fun String.toNative(): Component {
  * Creates gradient text for "Melinoe" using themed colors.
  * Utilizes MiniMessage's built-in multi-stop gradient tags.
  */
-fun createMelinoeGradient(): Component {
+fun getMelinoeGradient(): String {
     // Exact hex translation of the light teal to emerald green gradient
     val gradientTag = "<gradient:#B8FFE1:#7CFFB2:#2E8F78>"
-    return "<bold>${gradientTag}Melinoe</gradient></bold>".toNative()
+    return "<bold>${gradientTag}Melinoe</gradient></bold>"
+}
+
+/**
+ * Creates gradient text for "Melinoe" using themed colors.
+ * Utilizes MiniMessage's built-in multi-stop gradient tags.
+ */
+fun createMelinoeGradient(): Component {
+    // Exact hex translation of the light teal to emerald green gradient
+    return getMelinoeGradient().toNative()
 }
 
 /**
@@ -50,8 +59,7 @@ fun createMelinoeGradient(): Component {
  * Format: [Gradient Melinoe] ›
  */
 fun createMelinoeWatermark(): Component {
-    val gradientTag = "<gradient:#B8FFE1:#7CFFB2:#2E8F78>"
-    return "<bold>${gradientTag}Melinoe</gradient></bold> <bold>${Message.Colors.SEPARATOR}›</bold><reset>".toNative()
+    return (getMelinoeGradient() + " <bold>${Message.Colors.SEPARATOR}›</bold><reset>").toNative()
 }
 
 fun sendChatMessage(message: Any) {

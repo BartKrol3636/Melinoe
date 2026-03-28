@@ -8,6 +8,9 @@ import java.util.concurrent.CompletableFuture
 
 object EmojiSuggestionProvider {
     
+    private val emojiTypingRegex = Regex("(?i):[a-z0-9_]*:?")
+    
+    // Walks backwards from cursor to find a valid opening colon
     private fun findOpeningColon(text: String, cursor: Int): Int {
         var start = cursor - 1
         var endsWithColon = false
@@ -24,15 +27,23 @@ object EmojiSuggestionProvider {
     fun isTypingEmoji(field: EditBox?): Boolean {
         if (field == null) return false
         val text = field.value
-        if (text.isEmpty() || text.startsWith("/")) return false
+        if (text.isEmpty()) return false
         
         val cursor = field.cursorPosition
         if (cursor <= 0 || cursor > text.length) return false
         
+        if (text.startsWith("/")) {
+            val isCustomCmd = text.startsWith("/ac ", ignoreCase = true) ||
+                    text.startsWith("/gc ", ignoreCase = true) ||
+                    text.startsWith("/grc ", ignoreCase = true)
+            
+            if (!isCustomCmd) return false
+        }
+        
         val start = findOpeningColon(text, cursor)
         if (start < 0) return false
         
-        return text.substring(start, cursor).matches(Regex("(?i):[a-z0-9_]*:?"))
+        return text.substring(start, cursor).matches(emojiTypingRegex)
     }
     
     fun provideSuggestions(input: String?, cursor: Int): CompletableFuture<Suggestions> {
@@ -49,31 +60,38 @@ object EmojiSuggestionProvider {
             if (searchText.endsWith(":")) searchText = searchText.dropLast(1)
         }
         
-        val allValidSuggestions = mutableListOf<Suggestion>()
+        // Bucket arrays for sorting priority.
+        val exactMatches = mutableListOf<Suggestion>()
+        val startsWithMatches = mutableListOf<Suggestion>()
+        val containsMatches = mutableListOf<Suggestion>()
         
         for (data in EmojiShortcodes.suggestionList) {
-            // Wait for the async server packet in `mergeAndCheckPerks` to unlock this!
             if (data.isServerEmoji && !EmojiShortcodes.hasSupporterPerks) continue
             
-            if (searchText.isEmpty() || data.cleanName.contains(searchText)) {
-                allValidSuggestions.add(
-                    Suggestion(StringRange.between(start, cursor), data.suggestionString)
-                )
+            if (searchText.isEmpty()) {
+                containsMatches.add(Suggestion(StringRange.between(start, cursor), data.suggestionString))
+                continue
+            }
+            
+            val cleanName = data.cleanName
+            
+            if (cleanName == searchText) {
+                exactMatches.add(Suggestion(StringRange.between(start, cursor), data.suggestionString))
+            } else if (cleanName.startsWith(searchText)) {
+                startsWithMatches.add(Suggestion(StringRange.between(start, cursor), data.suggestionString))
+            } else if (cleanName.contains(searchText)) {
+                containsMatches.add(Suggestion(StringRange.between(start, cursor), data.suggestionString))
             }
         }
         
-        allValidSuggestions.sortWith(compareBy(
-            { suggestion ->
-                val rawSpace = suggestion.text.indexOf(' ')
-                val cleanedName = suggestion.text.substringBefore("*").substring(1, if (rawSpace > 0) rawSpace - 1 else suggestion.text.length).lowercase()
-                when {
-                    cleanedName == searchText -> 0
-                    cleanedName.startsWith(searchText) -> 1
-                    else -> 2
-                }
-            },
-            { it.text }
-        ))
+        exactMatches.sortBy { it.text }
+        startsWithMatches.sortBy { it.text }
+        containsMatches.sortBy { it.text }
+        
+        val allValidSuggestions = ArrayList<Suggestion>(exactMatches.size + startsWithMatches.size + containsMatches.size)
+        allValidSuggestions.addAll(exactMatches)
+        allValidSuggestions.addAll(startsWithMatches)
+        allValidSuggestions.addAll(containsMatches)
         
         if (allValidSuggestions.isEmpty()) return Suggestions.empty()
         
@@ -82,9 +100,8 @@ object EmojiSuggestionProvider {
         )
     }
     
-    fun mergeAndCheckPerks(serverSugs: Suggestions, modSugs: Suggestions): Suggestions {
+    fun mergeAndCheckPerks(serverSugs: Suggestions, modSugs: Suggestions, inputText: String): Suggestions {
         if (!EmojiShortcodes.hasSupporterPerks) {
-            // If the server's suggestion packet contains ANY of our server emojis, the user has the perk.
             if (serverSugs.list.any { EmojiShortcodes.serverEmojis.containsKey(it.text) }) {
                 EmojiShortcodes.hasSupporterPerks = true
             }
@@ -99,9 +116,19 @@ object EmojiSuggestionProvider {
         val ourShortcodes = finalModSugs.map { it.text.substringBefore("*").substringBefore(" ") }.toSet()
         val merged = finalModSugs.toMutableList()
         
+        val isCustomCmd = inputText.startsWith("/ac ", ignoreCase = true) ||
+                inputText.startsWith("/gc ", ignoreCase = true) ||
+                inputText.startsWith("/grc ", ignoreCase = true)
+        
         for (s in serverSugs.list) {
             val cleanText = s.text
-            // Filter out the ugly server ones if we are rendering the pretty mod versions
+            
+            // Clean out the generic <message> tooltip inside the suggestions box for our proxy commands
+            if (isCustomCmd && cleanText.startsWith("<") && cleanText.endsWith(">")) continue
+            
+            // Discard server emojis since we already have them
+            if (cleanText.startsWith(":")) continue
+            
             if (!ourShortcodes.contains(cleanText) && !ourShortcodes.contains("$cleanText:")) {
                 merged.add(s)
             }

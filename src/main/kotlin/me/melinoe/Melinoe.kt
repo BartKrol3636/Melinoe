@@ -1,7 +1,6 @@
 package me.melinoe
 
-import me.melinoe.commands.devCommand
-import me.melinoe.commands.mainCommand
+import me.melinoe.commands.*
 import me.melinoe.events.EventDispatcher
 import me.melinoe.events.core.EventBus
 import me.melinoe.features.ModuleManager
@@ -59,7 +58,10 @@ object Melinoe : ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
             arrayOf(
                 mainCommand,
-                devCommand
+                devCommand,
+                acCommand,
+                gcCommand,
+                grcCommand
             ).forEach { commodore -> commodore.register(dispatcher) }
         }
 
@@ -83,7 +85,6 @@ object Melinoe : ClientModInitializer {
 
     /**
      * Shutdown Melinoe.
-     * Call this when your mod is shutting down.
      */
     fun shutdown() {
         logger.info("Shutting down Melinoe...")
@@ -93,7 +94,7 @@ object Melinoe : ClientModInitializer {
             ModuleManager.saveConfigurations()
             
             // Shutdown DataConfig (handles async saves and creates final backup)
-            me.melinoe.utils.data.persistence.DataConfig.shutdown()
+            DataConfig.shutdown()
             
             logger.info("Melinoe shutdown complete")
         } catch (e: Exception) {

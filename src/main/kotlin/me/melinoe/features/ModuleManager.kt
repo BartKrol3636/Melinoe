@@ -6,6 +6,13 @@ import me.melinoe.clickgui.settings.impl.KeybindSetting
 import me.melinoe.config.ModuleConfig
 import me.melinoe.events.InputEvent
 import me.melinoe.events.core.on
+import me.melinoe.features.impl.combat.*
+import me.melinoe.features.impl.misc.*
+import me.melinoe.features.impl.tracking.*
+import me.melinoe.features.impl.tracking.bosstracker.TrackerModule
+import me.melinoe.features.impl.visual.*
+import me.melinoe.features.impl.visual.dungeontimer.TimerModule
+import me.melinoe.features.impl.visual.healthbar.HealthBarModule
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements
 import net.fabricmc.loader.api.FabricLoader
@@ -149,36 +156,36 @@ object ModuleManager {
         registerModules(
             config = ModuleConfig(file = File(Melinoe.configFile, "melinoe-config.json")),
             // Combat
-            me.melinoe.features.impl.combat.AutoClickerModule,
-            me.melinoe.features.impl.combat.WeaponRangeModule,
-            me.melinoe.features.impl.combat.AbilityRangeModule,
-            me.melinoe.features.impl.combat.NaturesGiftModule,
-            me.melinoe.features.impl.combat.AbilityCooldownModule,
-            me.melinoe.features.impl.combat.AssassinStacksModule,
+            AutoClickerModule,
+            WeaponRangeModule,
+            AbilityRangeModule,
+            NaturesGiftModule,
+            AbilityCooldownModule,
+            AssassinStacksModule,
 
             // Visual
-            me.melinoe.features.impl.visual.FullbrightModule,
-            me.melinoe.features.impl.visual.PerformanceHUDModule,
-            me.melinoe.features.impl.visual.dungeontimer.TimerModule,
-            me.melinoe.features.impl.visual.healthbar.HealthBarModule,
-            me.melinoe.features.impl.visual.HealthIndicatorModule,
-            me.melinoe.features.impl.visual.PlayerSizeModule,
-            me.melinoe.features.impl.visual.CameraModule,
-            me.melinoe.features.impl.visual.HitboxModule,
-            me.melinoe.features.impl.visual.ChatFilterModule,
-            me.melinoe.features.impl.visual.HideArmorModule,
-            me.melinoe.features.impl.visual.ArmorHUDModule,
+            FullbrightModule,
+            PerformanceHUDModule,
+            TimerModule,
+            HealthBarModule,
+            HealthIndicatorModule,
+            PlayerSizeModule,
+            CameraModule,
+            HitboxModule,
+            HideArmorModule,
+            ArmorHUDModule,
             
             // Tracking
-            me.melinoe.features.impl.tracking.LifetimeStatsModule,
-            me.melinoe.features.impl.tracking.PityCounterModule,
-            me.melinoe.features.impl.tracking.bosstracker.TrackerModule,
-            me.melinoe.features.impl.tracking.SessionManagerModule,
+            LifetimeStatsModule,
+            PityCounterModule,
+            TrackerModule,
+            SessionManagerModule,
 
             // Misc
-            me.melinoe.features.impl.misc.DiscordRPCModule,
-            me.melinoe.features.impl.misc.KeybindsModule,
-            me.melinoe.features.impl.misc.HideHeldTooltipsModule,
+            DiscordRPCModule,
+            KeybindsModule,
+            HideHeldTooltipsModule,
+            ChatModule,
 
             // Utility
             me.melinoe.features.impl.combat.AutoSprintModule,

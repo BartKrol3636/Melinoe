@@ -105,6 +105,11 @@ object EmojiShortcodes {
         "❤️‍🔥" to ":heart_on_fire:", "❤️‍🩹" to ":mending_heart:"
     )
     
+    // Pre-calculated & cached for the TextInputHandler typing hook
+    val sortedNatives: List<String> by lazy {
+        nativeToShortcode.keys.sortedByDescending { it.length }
+    }
+    
     private val emojiStarts: BooleanArray by lazy {
         val arr = BooleanArray(65536)
         reverseMappings.keys.forEach { if (it.isNotEmpty()) arr[it[0].code] = true }
@@ -113,8 +118,21 @@ object EmojiShortcodes {
     
     private val maxEmojiLength: Int by lazy { reverseMappings.keys.maxOfOrNull { it.length }?.coerceAtLeast(4) ?: 4 }
     
-    // Accommodates the `*` for server emojis
     private val artifactRegex = Regex("(:[a-zA-Z0-9_]+:)\\*?\\s+[\\uE000-\\uF8FF\\x{1525E}-\\x{152AB}]+")
+    
+    init {
+        // Preload massive properties mapping dictionaries in a Daemon thread
+        Thread({
+            mappings.size
+            reverseMappings.size
+            suggestionList.size
+            emojiStarts.size
+            sortedNatives.size
+        }, "Melinoe-Emoji-Preloader").apply {
+            isDaemon = true
+            start()
+        }
+    }
     
     private fun loadMappings(): Map<String, String> {
         val map = mutableMapOf<String, String>()

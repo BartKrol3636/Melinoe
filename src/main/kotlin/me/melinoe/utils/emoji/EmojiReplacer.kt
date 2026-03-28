@@ -1,5 +1,7 @@
 package me.melinoe.utils.emoji
 
+import me.melinoe.utils.createMelinoeGradient
+import me.melinoe.utils.getMelinoeGradient
 import me.melinoe.utils.toNative
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.HoverEvent
@@ -16,7 +18,7 @@ object EmojiReplacer {
     
     private fun getHoverComponent(shortcode: String): Component {
         return hoverCache.getOrPut(shortcode) {
-            "<gray>This is a Melinoe mod emoji and is only visible to other mod users.<br>It is shown as <yellow>$shortcode</yellow> for non-mod users.</gray>".toNative()
+            ("<gray>This is a" + getMelinoeGradient() + "mod emoji and is only visible to other mod users.<br>It is shown as <yellow>$shortcode</yellow> for non-mod users.</gray>").toNative()
         }
     }
     
@@ -63,7 +65,7 @@ object EmojiReplacer {
             val original = contents.text()
             val replaced = replaceInString(original)
             
-            val containsEmojiChar = replaced.codePoints().anyMatch { it in 0xF400..0xF498 || it in 0x1525E..0x152AB }
+            val containsEmojiChar = replaced.codePoints().anyMatch { it in 0xF400..0xF4FF || it in 0x1525E..0x152AB }
             
             result = if (replaced != original || containsEmojiChar) {
                 replaceWithColorPreservation(original, baseStyle = node.style)
@@ -103,14 +105,14 @@ object EmojiReplacer {
             val charCount = Character.charCount(cp)
             
             // Check for both Mod Emojis and Server Emojis
-            if (cp in 0xF400..0xF498 || cp in 0x1525E..0x152AB) {
+            if (cp in 0xF400..0xF4FF || cp in 0x1525E..0x152AB) {
                 if (currentText.isNotEmpty()) {
                     result.append(Component.literal(currentText.toString()).withStyle(baseStyle))
                     currentText.setLength(0)
                 }
                 
                 val emojiStr = String(Character.toChars(cp))
-                val isModEmoji = cp in 0xF400..0xF498
+                val isModEmoji = cp in 0xF400..0xF4FF
                 
                 val emojiComponent = Component.literal(emojiStr).withStyle(baseStyle).withStyle { s ->
                     var newStyle = s.withColor(TextColor.fromRgb(0xFFFFFF))

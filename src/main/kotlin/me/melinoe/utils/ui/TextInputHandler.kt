@@ -388,7 +388,8 @@ class TextInputHandler(
         
         val sb = java.lang.StringBuilder()
         var i = 0
-        val sortedNatives = EmojiShortcodes.nativeToShortcode.keys.sortedByDescending { it.length }
+        // Access the newly cached map directly instead of sorting it every keystroke
+        val sortedNatives = EmojiShortcodes.sortedNatives
         
         while (i < processedText.length) {
             var matchedNative: String? = null
