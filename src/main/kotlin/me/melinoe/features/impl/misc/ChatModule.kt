@@ -8,6 +8,7 @@ import me.melinoe.features.Category
 import me.melinoe.features.Module
 import me.melinoe.utils.emoji.EmojiShortcodes
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.Font
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
 import net.minecraft.client.gui.GuiGraphics
@@ -27,7 +28,6 @@ enum class ServerChatCategory(val id: String) {
 
 private data class QueuedMessage(val targetCategory: ServerChatCategory, val message: String)
 
-// State machine for safely switching server channels, sending a message, and switching back
 private enum class QueueState {
     IDLE,
     WAITING_FOR_SWITCH,
@@ -80,11 +80,22 @@ object ChatModule : Module(
     private var lastEnabledState: Boolean = false
     private var scrollOffset = 0
     
+    // UI Render Caches
+    private var cachedAvailableTabs: List<ChatTab> = emptyList()
+    private var lastTabSettingsHash = -1
+    private val tabWidthCache = mutableMapOf<ChatTab, Int>()
+    
     // Cache regexes
     private val contentRegex = Regex("^(.*?\\[(?:Group|Guild)\\].*?:\\s*)", RegexOption.IGNORE_CASE)
     private val modeSwitchRegex = Regex("^Set your chat mode to (\\w+)\\.", RegexOption.IGNORE_CASE)
     private val fameRegex = Regex("^\\+\\d+ Fame gained!$")
     private val autoSellRegex = Regex("^Auto-sell earnings: .+$")
+    
+    private val deathCauses = arrayOf(
+        " fell off against ", " had their bits blown off by ", " was torn in half by ",
+        " was spangled by ", " got snapped in half by ", " had their head removed by ",
+        " was diagnosed with 'skill issue' by ", " dieded by ", " had their day ruined by "
+    )
     
     var currentServerCategory = ServerChatCategory.DEFAULT
         private set
@@ -100,18 +111,37 @@ object ChatModule : Module(
         loadChatCategory()
     }
     
-    // Build the list once
+    // Evaluates a bitmask hash to only rebuild the List when a setting physically changes
     private val availableTabs: List<ChatTab>
-        get() = buildList(9) {
-            add(ChatTab.ALL)
-            if (showChatTab) add(ChatTab.CHAT)
-            if (showGroupTab) add(ChatTab.GROUP)
-            if (showGuildTab) add(ChatTab.GUILD)
-            if (showMessagesTab) add(ChatTab.MESSAGES)
-            if (showDropsTab) add(ChatTab.DROPS)
-            if (showDeathsTab) add(ChatTab.DEATHS)
-            if (showCraftsTab) add(ChatTab.CRAFTS)
+        get() {
+            var hash = 0
+            if (showChatTab) hash = hash or 1
+            if (showGroupTab) hash = hash or 2
+            if (showGuildTab) hash = hash or 4
+            if (showMessagesTab) hash = hash or 8
+            if (showDropsTab) hash = hash or 16
+            if (showDeathsTab) hash = hash or 32
+            if (showCraftsTab) hash = hash or 64
+            
+            if (hash != lastTabSettingsHash) {
+                lastTabSettingsHash = hash
+                cachedAvailableTabs = buildList(9) {
+                    add(ChatTab.ALL)
+                    if (showChatTab) add(ChatTab.CHAT)
+                    if (showGroupTab) add(ChatTab.GROUP)
+                    if (showGuildTab) add(ChatTab.GUILD)
+                    if (showMessagesTab) add(ChatTab.MESSAGES)
+                    if (showDropsTab) add(ChatTab.DROPS)
+                    if (showDeathsTab) add(ChatTab.DEATHS)
+                    if (showCraftsTab) add(ChatTab.CRAFTS)
+                }
+            }
+            return cachedAvailableTabs
         }
+    
+    private fun getTabWidth(tab: ChatTab, font: Font): Int {
+        return tabWidthCache.getOrPut(tab) { font.width(tab.displayName) }
+    }
     
     private fun setActiveTab(tab: ChatTab) {
         if (activeTab != tab) {
@@ -141,9 +171,11 @@ object ChatModule : Module(
         }
     }
     
-    // Handles the automated switching of chat modes to send queued messages
     private fun tickQueue() {
         if (!enabled) return
+        
+        if (queueState == QueueState.IDLE && messageQueue.isEmpty()) return
+        
         val mc = Minecraft.getInstance()
         val connection = mc.connection ?: return
         val now = System.currentTimeMillis()
@@ -157,14 +189,12 @@ object ChatModule : Module(
             val next = messageQueue.peek() ?: return
             
             if (currentServerCategory == next.targetCategory) {
-                // Already in the right mode, send the message while respecting server cooldown
                 if (now - lastMessageTime >= 1100) {
                     messageQueue.poll()
                     connection.sendChat(next.message)
                     lastMessageTime = now
                 }
             } else {
-                // Need to switch modes first
                 originalCategory = currentServerCategory
                 pendingMessage = next.message
                 queueState = QueueState.WAITING_FOR_SWITCH
@@ -178,7 +208,6 @@ object ChatModule : Module(
                 connection.sendChat(pendingMessage)
                 lastMessageTime = now
                 
-                // Switch back to original mode
                 queueState = QueueState.WAITING_FOR_RESTORE
                 stateStartTime = now
                 connection.sendCommand("chat ${originalCategory.id}")
@@ -186,7 +215,6 @@ object ChatModule : Module(
         }
     }
     
-    // Parses incoming server messages to detect chat mode switches
     fun handleChatModeMessage(plainText: String): Boolean {
         val match = modeSwitchRegex.find(plainText) ?: return false
         val newMode = match.groupValues[1].lowercase()
@@ -196,7 +224,7 @@ object ChatModule : Module(
         
         if (queueState == QueueState.WAITING_FOR_SWITCH) {
             queueState = QueueState.READY_TO_SEND_MSG
-            return true // Hide the mode switch message
+            return true
         }
         
         if (queueState == QueueState.WAITING_FOR_RESTORE) {
@@ -210,7 +238,6 @@ object ChatModule : Module(
     fun interceptOutgoingMessage(rawMessage: String, addToHistory: Boolean): Boolean {
         if (!enabled || rawMessage.startsWith("/")) return false
         
-        // If we are busy switching modes, intercept standard chat and queue it
         if (queueState != QueueState.IDLE) {
             val processedMessage = EmojiShortcodes.replaceEmojiWithShortcodes(rawMessage)
             enqueueMessage(originalCategory, processedMessage)
@@ -240,50 +267,65 @@ object ChatModule : Module(
     
     fun checkAndRefreshChat() {
         val currentEnabled = enabled
+        var needsRescale = false
         
-        // Handle toggling module on/off
         if (lastEnabledState != currentEnabled) {
             lastEnabledState = currentEnabled
             if (!currentEnabled) activeTab = ChatTab.ALL
-            Minecraft.getInstance().gui?.chat?.rescaleChat()
+            needsRescale = true
         }
         
-        if (!currentEnabled) return
+        if (!currentEnabled) {
+            if (needsRescale) Minecraft.getInstance().gui?.chat?.rescaleChat()
+            return
+        }
         
         if (!enableChatTabs && activeTab != ChatTab.ALL) {
             activeTab = ChatTab.ALL
-            Minecraft.getInstance().gui?.chat?.rescaleChat()
+            needsRescale = true
+        }
+        
+        val tabs = availableTabs
+        if (activeTab != ChatTab.ALL && activeTab !in tabs) {
+            activeTab = ChatTab.ALL
+            needsRescale = true
         }
         
         if (lastTabState != activeTab) {
             lastTabState = activeTab
+            needsRescale = true
+        }
+        
+        if (needsRescale) {
+            ensureActiveTabVisible()
             Minecraft.getInstance().gui?.chat?.rescaleChat()
         }
         
         tickQueue()
     }
     
-    private val deathCauses = arrayOf(
-        "fell off against", "had their bits blown off by", "was torn in half by",
-        "was spangled by", "got snapped in half by", "had their head removed by",
-        "was diagnosed with 'skill issue' by", "dieded by", "had their day ruined by"
-    )
-    
-    // Sorts a text message into its respective tab category
     private fun determineCategory(message: String): ChatTab {
-        if (message == "Auction items have been updated." || fameRegex.matches(message) || autoSellRegex.matches(message))
+        // Fast checks first to avoid unnecessary processing
+        if (message == "Auction items have been updated." || fameRegex.matches(message) || autoSellRegex.matches(message)) {
             return ChatTab.UTILITY
+        }
         
         if (message.contains(" has just crafted ")) return ChatTab.CRAFTS
-        if (message.contains(" got ") && message.contains(" from ")) return ChatTab.DROPS
         
-        for (cause in deathCauses) {
-            if (message.contains(" $cause ")) return ChatTab.DEATHS
+        if ((message.contains(" got ") && message.contains(" from ")) ||
+            (message.contains(" - Dropped ") && message.contains(" pity from "))) {
+            return ChatTab.DROPS
         }
         
         if (message.contains("[Group]")) return ChatTab.GROUP
         if (message.contains("[Guild]")) return ChatTab.GUILD
+        
         if ((message.contains("To ") || message.contains("From ")) && message.contains("┅")) return ChatTab.MESSAGES
+        
+        for (i in deathCauses.indices) {
+            if (message.contains(deathCauses[i])) return ChatTab.DEATHS
+        }
+        
         if (message.contains(": ")) return ChatTab.CHAT
         
         return ChatTab.ALL
@@ -293,13 +335,17 @@ object ChatModule : Module(
         if (!enabled) return true
         val category = determineCategory(plainText)
         
-        if (hideUtilityMessages && category == ChatTab.UTILITY) return false
-        if (!enableChatTabs || activeTab == ChatTab.ALL) return category != ChatTab.UTILITY
+        if (category == ChatTab.UTILITY && hideUtilityMessages) {
+            return false
+        }
+        
+        if (!enableChatTabs || activeTab == ChatTab.ALL) {
+            return true
+        }
         
         return category == activeTab
     }
     
-    // Allows censoring group/guild messages
     fun processMessageContent(original: Component): Component {
         if (!enabled) return original
         
@@ -318,7 +364,6 @@ object ChatModule : Module(
         var currentLen = 0
         var appendedDots = false
         
-        // Rebuilds the component keeping the original styles intact, appending "..." when needed
         original.visit({ style: Style, text: String ->
             if (appendedDots) return@visit Optional.empty<Unit>()
             
@@ -355,8 +400,9 @@ object ChatModule : Module(
         val tabPadding = 2
         val tabSpacing = 2
         
-        for (tab in availableTabs) {
-            val w = font.width(tab.displayName) + (tabPadding * 2)
+        val tabs = availableTabs
+        for (tab in tabs) {
+            val w = getTabWidth(tab, font) + (tabPadding * 2)
             if (tab == activeTab) {
                 if (currentX < scrollOffset) {
                     scrollOffset = currentX
@@ -378,17 +424,18 @@ object ChatModule : Module(
         val currentY = mc.window.guiScaledHeight - 32
         val tabPadding = 2
         val tabSpacing = 2
+        val tabHeight = font.lineHeight + (tabPadding * 2)
         
-        guiGraphics.enableScissor(4, currentY - 2, 4 + maxWidth, currentY + font.lineHeight + tabPadding * 2 + 2)
+        guiGraphics.enableScissor(4, currentY - 2, 4 + maxWidth, currentY + tabHeight + 2)
         
         var currentX = 4 - scrollOffset
+        val tabs = availableTabs
         
-        for (tab in availableTabs) {
-            val tabWidth = font.width(tab.displayName) + (tabPadding * 2)
+        for (tab in tabs) {
+            val tabWidth = getTabWidth(tab, font) + (tabPadding * 2)
             
-            // Only calculate hovered state and render if it sits within visible bounds
             if (currentX + tabWidth > 4 && currentX < 4 + maxWidth) {
-                val isHovered = mouseX >= currentX && mouseX <= currentX + tabWidth && mouseY >= currentY && mouseY <= currentY + font.lineHeight + (tabPadding * 2)
+                val isHovered = mouseX >= currentX && mouseX <= currentX + tabWidth && mouseY >= currentY && mouseY <= currentY + tabHeight
                 
                 val textColor = when {
                     tab == activeTab -> -1 // White
@@ -398,7 +445,6 @@ object ChatModule : Module(
                 
                 guiGraphics.drawString(font, tab.displayName, currentX + tabPadding, currentY + tabPadding, textColor, true)
             }
-            
             currentX += tabWidth + tabSpacing
         }
         
@@ -414,14 +460,18 @@ object ChatModule : Module(
         val currentY = mc.window.guiScaledHeight - 32
         val tabPadding = 2
         val tabSpacing = 2
+        val tabHeight = font.lineHeight + (tabPadding * 2)
         
-        if (mouseX < 4 || mouseX > 4 + maxWidth) return false
+        // Immediately reject clicks that are visibly out of bounds
+        if (mouseX < 4 || mouseX > 4 + maxWidth || mouseY < currentY || mouseY > currentY + tabHeight) return false
         
         var currentX = 4 - scrollOffset
-        for (tab in availableTabs) {
-            val tabWidth = font.width(tab.displayName) + (tabPadding * 2)
+        val tabs = availableTabs
+        
+        for (tab in tabs) {
+            val tabWidth = getTabWidth(tab, font) + (tabPadding * 2)
             
-            if (mouseX >= currentX && mouseX <= currentX + tabWidth && mouseY >= currentY && mouseY <= currentY + font.lineHeight + (tabPadding * 2)) {
+            if (mouseX >= currentX && mouseX <= currentX + tabWidth) {
                 setActiveTab(tab)
                 return true
             }
@@ -433,7 +483,6 @@ object ChatModule : Module(
     fun keyPressed(keyCode: Int, modifiers: Int): Boolean {
         if (!enabled || !enableChatTabs) return false
         
-        // Add in support for Alt + Left/Right arrow keys to swap between chat tabs
         if ((modifiers and GLFW.GLFW_MOD_ALT) != 0) {
             val tabs = availableTabs
             val currentIndex = tabs.indexOf(activeTab)

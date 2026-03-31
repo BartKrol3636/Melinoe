@@ -18,7 +18,7 @@ object EmojiReplacer {
     
     private fun getHoverComponent(shortcode: String): Component {
         return hoverCache.getOrPut(shortcode) {
-            ("<gray>This is a" + getMelinoeGradient() + "mod emoji and is only visible to other mod users.<br>It is shown as <yellow>$shortcode</yellow> for non-mod users.</gray>").toNative()
+            ("<gray>This is a " + getMelinoeGradient() + " mod emoji and is only visible to other mod users.<br>It is shown as <yellow>$shortcode</yellow> for non-mod users.</gray>").toNative()
         }
     }
     
