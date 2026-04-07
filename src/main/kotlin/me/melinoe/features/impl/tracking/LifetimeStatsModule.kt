@@ -1,16 +1,16 @@
 package me.melinoe.features.impl.tracking
 
-import me.melinoe.features.Category
-import me.melinoe.features.Module
-import me.melinoe.clickgui.settings.impl.HUDSetting
 import me.melinoe.clickgui.settings.impl.BooleanSetting
 import me.melinoe.clickgui.settings.impl.ColorSetting
-import me.melinoe.utils.data.persistence.DataConfig
-import me.melinoe.utils.data.persistence.TypeSafeDataAccess
-import me.melinoe.utils.data.persistence.TrackingKey
+import me.melinoe.clickgui.settings.impl.HUDSetting
+import me.melinoe.features.Category
+import me.melinoe.features.Module
 import me.melinoe.utils.Color
-import net.minecraft.client.gui.GuiGraphics
+import me.melinoe.utils.data.persistence.DataConfig
+import me.melinoe.utils.data.persistence.TrackingKey
+import me.melinoe.utils.data.persistence.TypeSafeDataAccess
 import net.minecraft.ChatFormatting
+import net.minecraft.network.chat.Component
 
 /**
  * Lifetime Stats Module - Displays lifetime statistics for bag drops
@@ -44,6 +44,32 @@ object LifetimeStatsModule : Module(
     private var cachedCompanionBags = 0
     private var cachedEventBags = 0
 
+    // Render loop state tracking
+    private var forceRenderUpdate = true
+    private var wasExample = false
+    private var lastSettingsState = -1
+    
+    // Dimension caching to avoid per-frame Pair allocation
+    private var lastRenderWidth = 0
+    private var lastRenderHeight = 0
+    private var cachedRenderPair = Pair(0, 0)
+    
+    // Title caching
+    private var cachedTitleComponent: Component? = null
+    private var cachedTitleWidth = 0
+    
+    // Fallback caching
+    private var noDataWidth = -1
+    
+    // Data class to store pre-calculated strings and text widths
+    private class CachedStat(
+        val labelText: String,
+        val labelWidth: Int,
+        var valueText: String,
+        var valueWidth: Int
+    )
+    private val statRenderList = mutableListOf<CachedStat>()
+    
     init {
         // Register callback for instant updates when stats change
         DataConfig.registerUpdateCallback {
@@ -62,6 +88,62 @@ object LifetimeStatsModule : Module(
         cachedRoyalBags = TypeSafeDataAccess.get(TrackingKey.LifetimeStat.RoyalBags) ?: 0
         cachedCompanionBags = TypeSafeDataAccess.get(TrackingKey.LifetimeStat.CompanionBags) ?: 0
         cachedEventBags = TypeSafeDataAccess.get(TrackingKey.LifetimeStat.EventBags) ?: 0
+        
+        // Flag to rebuild the UI text cache on the next frame
+        forceRenderUpdate = true
+    }
+    
+    /**
+     * Packs all boolean settings into a single bitmask integer
+     */
+    private fun getCurrentSettingsState(): Int {
+        return (if (showEventBags) 1 else 0) or
+                (if (showCompanionBags) 2 else 0) or
+                (if (showRoyalBags) 4 else 0) or
+                (if (showBloodshotBags) 8 else 0) or
+                (if (showVoidboundBags) 16 else 0) or
+                (if (showUnholyBags) 32 else 0) or
+                (if (showTotalRuns) 64 else 0)
+    }
+    
+    /**
+     * Builds the render cache only when stats update, settings change, or in example mode
+     */
+    private fun updateRenderData(example: Boolean) {
+        val font = mc.font ?: return
+        statRenderList.clear()
+        
+        // Local helper to avoid repeating width logic
+        fun addStat(label: String, value: Int) {
+            val labelText = "$label:"
+            val valueText = value.toString()
+            statRenderList.add(
+                CachedStat(
+                    labelText = labelText,
+                    labelWidth = font.width(labelText),
+                    valueText = valueText,
+                    valueWidth = font.width(valueText)
+                )
+            )
+        }
+        
+        if (example) {
+            if (showEventBags) addStat("Events", 7)
+            if (showCompanionBags) addStat("Companions", 15)
+            if (showRoyalBags) addStat("Royal", 23)
+            if (showBloodshotBags) addStat("Bloodshot", 56)
+            if (showVoidboundBags) addStat("Voidbound", 8)
+            if (showUnholyBags) addStat("Unholy", 12)
+            if (showTotalRuns) addStat("Total Runs", 1234)
+        } else {
+            if (showEventBags) addStat("Events", cachedEventBags)
+            if (showCompanionBags) addStat("Companions", cachedCompanionBags)
+            if (showRoyalBags) addStat("Royals", cachedRoyalBags)
+            if (showBloodshotBags) addStat("Bloodshots", cachedBloodshotBags)
+            if (showVoidboundBags) addStat("Voidbounds", cachedVoidboundBags)
+            if (showUnholyBags) addStat("Unholys", cachedUnholyBags)
+            if (showTotalRuns) addStat("Total Runs", cachedTotalRuns)
+        }
     }
 
     private val lifetimeStatsHud by HUDSetting(
@@ -73,53 +155,56 @@ object LifetimeStatsModule : Module(
         description = "Position of the lifetime stats display",
         module = this
     ) render@{ example ->
-        if (!enabled && !example) return@render Pair(0, 0)
-        
-        val stats = if (example) {
-            linkedMapOf<String, Int>().apply {
-                if (showEventBags) put("Events", 7)
-                if (showCompanionBags) put("Companions", 15)
-                if (showRoyalBags) put("Royal", 23)
-                if (showBloodshotBags) put("Bloodshot", 56)
-                if (showVoidboundBags) put("Voidbound", 8)
-                if (showUnholyBags) put("Unholy", 12)
-                if (showTotalRuns) put("Total Runs", 1234)
-            }
-        } else {
-            linkedMapOf<String, Int>().apply {
-                if (showEventBags) put("Events", cachedEventBags)
-                if (showCompanionBags) put("Companions", cachedCompanionBags)
-                if (showRoyalBags) put("Royals", cachedRoyalBags)
-                if (showBloodshotBags) put("Bloodshots", cachedBloodshotBags)
-                if (showVoidboundBags) put("Voidbounds", cachedVoidboundBags)
-                if (showUnholyBags) put("Unholys", cachedUnholyBags)
-                if (showTotalRuns) put("Total Runs", cachedTotalRuns)
-            }
-        }
+        if (!enabled && !example) return@render cachedRenderPair
         
         val font = mc.font
-        val title = "Lifetime Stats"
-        val titleComponent = net.minecraft.network.chat.Component.literal(title).withStyle(net.minecraft.ChatFormatting.BOLD)
+
+        // Check if we need to rebuild the cache
+        val currentSettingsState = getCurrentSettingsState()
+        if (forceRenderUpdate || currentSettingsState != lastSettingsState || example != wasExample) {
+            updateRenderData(example)
+            
+            lastSettingsState = currentSettingsState
+            wasExample = example
+            forceRenderUpdate = false
+        }
+        
+        // Ensure title is cached
+        if (cachedTitleComponent == null) {
+            cachedTitleComponent = Component.literal("Lifetime Stats").withStyle(ChatFormatting.BOLD)
+            cachedTitleWidth = font.width(cachedTitleComponent!!)
+        }
+        
         val titleColor = widgetColor.rgba and 0x00FFFFFF
         val borderColor = 0xFF000000.toInt() or titleColor
         val bgColor = 0xC00C0C0C.toInt()
         
         // Calculate dimensions - use bold title width
         val lineSpacing = 11 // Line spacing between entries
-        val titleWidth = font.width(titleComponent)
-        val maxLabelWidth = if (stats.isNotEmpty()) {
-            stats.keys.maxOfOrNull { font.width(it) } ?: font.width("Example Stat")
+        var maxLabelWidth = 0
+        var maxValueWidth = 0
+        
+        if (statRenderList.isNotEmpty()) {
+            for (i in 0 until statRenderList.size) {
+                val stat = statRenderList[i]
+                if (stat.labelWidth > maxLabelWidth) maxLabelWidth = stat.labelWidth
+                if (stat.valueWidth > maxValueWidth) maxValueWidth = stat.valueWidth
+            }
         } else {
-            font.width("No stats data")
+            if (noDataWidth == -1) noDataWidth = font.width("No stats data")
+            maxLabelWidth = noDataWidth
         }
-        val maxValueWidth = if (stats.isNotEmpty()) {
-            stats.values.maxOfOrNull { font.width(it.toString()) } ?: font.width("9999")
-        } else {
-            0
-        }
+        
         val contentWidth = maxLabelWidth + maxValueWidth + 10
-        val boxWidth = maxOf(titleWidth + 16, contentWidth + 12) // 6px padding on each side = 12px total
-        val boxHeight = font.lineHeight + 2 + (maxOf(stats.size, 1) * lineSpacing) + 4
+        val boxWidth = maxOf(cachedTitleWidth + 16, contentWidth + 12) // 6px padding on each side = 12px total
+        val boxHeight = font.lineHeight + 2 + (maxOf(statRenderList.size, 1) * lineSpacing) + 4
+        
+        // Update returned dimension pair cache if dimensions changed
+        if (boxWidth != lastRenderWidth || boxHeight != lastRenderHeight) {
+            lastRenderWidth = boxWidth
+            lastRenderHeight = boxHeight
+            cachedRenderPair = Pair(boxWidth, boxHeight)
+        }
         
         // Draw background
         fill(1, 0, boxWidth - 1, boxHeight, bgColor)
@@ -128,7 +213,7 @@ object LifetimeStatsModule : Module(
         
         // Draw borders
         val strHeightHalf = font.lineHeight / 2
-        val strAreaWidth = titleWidth + 4
+        val strAreaWidth = cachedTitleWidth + 4
         
         // Top border (split around title)
         fill(2, 1 + strHeightHalf, 6, 2 + strHeightHalf, borderColor)
@@ -141,38 +226,28 @@ object LifetimeStatsModule : Module(
         fill(boxWidth - 2, 2 + strHeightHalf, boxWidth - 1, boxHeight - 2, borderColor)
         
         // Draw title in bold
-        drawString(font, titleComponent, 8, 2, borderColor, false)
+        drawString(font, cachedTitleComponent!!, 8, 2, borderColor, false)
         
         // Draw stats
-        if (stats.isNotEmpty()) {
+        if (statRenderList.isNotEmpty()) {
             var yOffset = font.lineHeight + 4
             val leftPadding = 6 // Padding from left edge
             val rightPadding = 6 // Padding from right edge
-            for ((label, value) in stats) {
-                val labelText = "$label:"
-                val valueText = value.toString()
+            
+            for (i in 0 until statRenderList.size) {
+                val stat = statRenderList[i]
                 
-                drawString(font, labelText, leftPadding, yOffset, labelColor.rgba, false)
+                drawString(font, stat.labelText, leftPadding, yOffset, labelColor.rgba, false)
                 
-                val valueX = boxWidth - font.width(valueText) - rightPadding
-                drawString(font, valueText, valueX, yOffset, valueColor.rgba, false)
+                val valueX = boxWidth - stat.valueWidth - rightPadding
+                drawString(font, stat.valueText, valueX, yOffset, valueColor.rgba, false)
                 
                 yOffset += lineSpacing
             }
         } else {
-            // Example mode with no data
-            val exampleText = "No stats data"
-            drawString(font, exampleText, 6, font.lineHeight + 4, 0xFF808080.toInt(), false)
+            drawString(font, "No stats data", 6, font.lineHeight + 4, 0xFF808080.toInt(), false)
         }
         
-        Pair(boxWidth, boxHeight)
-    }
-
-    override fun onEnable() {
-        super.onEnable()
-    }
-
-    override fun onDisable() {
-        super.onDisable()
+        return@render cachedRenderPair
     }
 }

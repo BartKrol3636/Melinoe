@@ -3,6 +3,8 @@ package me.melinoe.features.impl.tracking.bosstracker
 import me.melinoe.Melinoe.mc
 import me.melinoe.utils.LocalAPI
 import me.melinoe.utils.ServerUtils
+import me.melinoe.utils.render.WaypointCache
+import me.melinoe.utils.render.WaypointData
 import me.melinoe.utils.render.WaypointRenderer
 import net.minecraft.client.Camera
 import net.minecraft.world.phys.Vec3
@@ -22,23 +24,26 @@ object RendererWaypoints {
      * Render waypoints for all tracked bosses
      */
     fun render(context: net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext) {
-        if (!ServerUtils.isOnTelos())
+        if (!ServerUtils.isOnTelos()) return
         if (!showWaypoints) return
         
         val player = mc.player ?: return
-        val camera = mc.gameRenderer.mainCamera
+        val camera = mc.gameRenderer.mainCamera ?: return
         val cameraPos = camera.position
-
+        val cameraDirection = Vec3.directionFromRotation(camera.xRot, camera.yRot)
+        
         // Fetch current area safely to determine shadowlands logic filtering
         val inShadowlands = try {
             LocalAPI.getCurrentCharacterArea() == "Shadowlands"
         } catch (e: Exception) {
             false
         }
-
+        
+        val waypointsToRender = mutableListOf<WaypointData>()
+        
         for (boss in BossState.getAllBosses()) {
             val isShadowlandsBoss = boss.name in listOf("Reaper", "Warden", "Herald")
-
+            
             if (inShadowlands) {
                 // If in shadowlands, hide all other bosses (except shadowlands minibosses, raphael, & defender
                 if (!isShadowlandsBoss && boss.name != "Raphael" && boss.name != "Defender") continue
@@ -80,25 +85,45 @@ object RendererWaypoints {
             } else {
                 waypoint.getColor()
             }
-            val text = waypoint.getDisplayText()
             
-            // Render waypoint
-            WaypointRenderer.renderWaypoint(
-                context = context,
+            // Text Calculation
+            val textWorldPos = Vec3(pos.x + 0.5, pos.y + 1.5, pos.z + 0.5)
+            val toWaypoint = textWorldPos.subtract(cameraPos).normalize()
+            val isLookingAt = cameraDirection.dot(toWaypoint) > 0.95
+            val isNearby = distance < 10.0
+            
+            val text = waypoint.getDisplayText()
+            val displayText = if (text.isEmpty()) {
+                ""
+            } else if (isLookingAt || isNearby) {
+                text
+            } else {
+                WaypointCache.getTruncatedText(text)
+            }
+            
+            waypointsToRender.add(WaypointData(
                 pos = pos,
+                distance = distance,
                 text = text,
+                displayText = displayText,
                 color = color,
                 alpha = 0.5f * fadeAlpha,
-                showBeam = waypointBeams,
-                showLine = false,
-                showText = true,
-                textScale = 0.5f,
-                lineWidth = 2.0f,
                 textAlpha = fadeAlpha,
                 icon = boss.data.modelIdentifier,
                 isFlashing = boss.state == BossState.State.DEFEATED_PORTAL_ACTIVE
-            )
+            ))
         }
+        
+        // Draw everything all at once to prevent constant render engine layer flushing
+        WaypointRenderer.renderAllBatched(
+            context = context,
+            waypoints = waypointsToRender,
+            showBeam = waypointBeams,
+            showLine = false,
+            showText = true,
+            textScale = 0.5f,
+            lineWidth = 2.0f
+        )
     }
     
     /**

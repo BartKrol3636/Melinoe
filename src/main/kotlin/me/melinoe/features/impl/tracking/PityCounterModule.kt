@@ -22,9 +22,11 @@ import me.melinoe.utils.data.persistence.DataConfig
 import me.melinoe.utils.data.persistence.TrackingKey
 import me.melinoe.utils.data.persistence.TypeSafeDataAccess
 import net.minecraft.ChatFormatting
+import net.minecraft.core.component.DataComponents
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 
 /**
  * Pity Counter Module - displays pity counters for items from the current boss
@@ -61,13 +63,43 @@ object PityCounterModule : Module(
     
     // Memory Caches to massively improve performance
     private val cachedPityCounters = mutableMapOf<String, Int>()
-    private val cachedItemStack = mutableMapOf<Item, ItemStack>()
-    private val cachedTruncatedName = mutableMapOf<Pair<String, Int>, String>()
+    private val cachedPityStrings = mutableMapOf<String, String>()
+    private val cachedPityWidths = mutableMapOf<String, Int>()
+    private val cachedItemStacks = mutableMapOf<Item, ItemStack>()
+    
+    // Throttling for environment calculations
+    private var lastEnvCheckTime = 0L
+    private var cachedArea = ""
+    private var cachedIsOnTelos = false
+    private var cachedItemsToDisplay = emptyList<Item>()
+    
+    // Render loop state tracking
+    private var lastItemsToDisplay = emptyList<Item>()
+    private var lastMaxChars = -1
+    private var wasExample = false
+    private var forceRenderUpdate = false
+    
+    private var lastRenderWidth = 0
+    private var lastRenderHeight = 0
+    private var cachedRenderPair = Pair(0, 0)
+    
     private var cachedTitleComponent: Component? = null
-    
     private var lastBossName = ""
+    private var cachedTitleWidth = 0
     
-    // Pre-mapped lists to prevent creating them every frame
+    // Data class to store pre-calculated item render data
+    private class CachedRenderItem(
+        val item: Item,
+        var displayName: String,
+        var nameWidth: Int,
+        var isFullyTruncated: Boolean,
+        var pityValueStr: String,
+        var valueWidth: Int,
+        var rarityColor: Int
+    )
+    private var renderDataList = mutableListOf<CachedRenderItem>()
+    
+    // Pre-mapped collections
     private val shadowlandsBosses = listOf(BossData.DEFENDER, BossData.REAPER, BossData.WARDEN, BossData.HERALD)
     private val realmBossMapping by lazy {
         me.melinoe.features.impl.tracking.bosstracker.BossData.entries
@@ -86,41 +118,40 @@ object PityCounterModule : Module(
         // Initial cache load
         updateCache()
         
-        // Listen for dungeon entry/exit
-        on<DungeonEntryEvent> {
-            handleDungeonEntry(dungeon)
-        }
-        
-        on<DungeonChangeEvent> {
-            handleDungeonEntry(newDungeon)
-        }
-        on<DungeonExitEvent> {
-            currentBossData = null
-        }
-        
-        // Listen for boss bar updates (world bosses)
-        on<BossBarUpdateEvent> {
-            handleBossBarUpdate(bossBarMap)
-        }
+        on<DungeonEntryEvent> { handleDungeonEntry(dungeon) } // Listen for dungeon entry
+        on<DungeonChangeEvent> { handleDungeonEntry(newDungeon) } // Listen for dungeon changes
+        on<DungeonExitEvent> { currentBossData = null; invalidateEnvCache() } // Listen for dungeon exit
+        on<BossBarUpdateEvent> { handleBossBarUpdate(bossBarMap) } // Listen for boss bar updates (world bosses)
     }
     
     /**
      * Update cached pity counters for all items
      */
     private fun updateCache() {
+        val font = mc.font
         Item.entries.forEach { item ->
-            val pityKey = TrackingKey.PityCounter(item.name)
-            cachedPityCounters[item.name] = TypeSafeDataAccess.get(pityKey) ?: 0
+            val count = TypeSafeDataAccess.get(TrackingKey.PityCounter(item.name)) ?: 0
+            cachedPityCounters[item.name] = count
+            
+            val countStr = count.toString()
+            cachedPityStrings[item.name] = countStr
+            
+            if (font != null) {
+                cachedPityWidths[item.name] = font.width(countStr)
+            }
         }
+        // Force the render loop to rebuild string caches on the next frame
+        forceRenderUpdate = true
     }
     
-    /**
-     * Get or create cached ItemStack to avoid creating objects every frame
-     */
+    private fun invalidateEnvCache() {
+        lastEnvCheckTime = 0L
+    }
+    
     private fun getItemStack(item: Item): ItemStack {
-        return cachedItemStack.getOrPut(item) {
-            val itemStack = ItemStack(net.minecraft.world.item.Items.CARROT_ON_A_STICK)
-            itemStack.set(net.minecraft.core.component.DataComponents.ITEM_MODEL, ResourceLocation.parse(item.texturePath))
+        return cachedItemStacks.getOrPut(item) {
+            val itemStack = ItemStack(Items.CARROT_ON_A_STICK)
+            itemStack.set(DataComponents.ITEM_MODEL, ResourceLocation.parse(item.texturePath))
             itemStack
         }
     }
@@ -133,25 +164,12 @@ object PityCounterModule : Module(
         // If the max allowed characters is 0 or less, immediately return the dash indicator
         if (maxChars <= 0) return "-"
         
-        // Cache based on the item name
-        val key = Pair(name, maxChars)
-        return cachedTruncatedName.getOrPut(key) {
-            var validCharCount = 0
-            
-            for (i in name.indices) {
-                // Only count characters that aren't apostrophes
-                if (name[i] != '\'') {
-                    validCharCount++
-                }
-                
-                if (validCharCount > maxChars) {
-                    // Slices the string from the beginning up to the preset setting
-                    return@getOrPut name.substring(0, i) + "…"
-                }
-            }
-            
-            name
+        var validCharCount = 0
+        for (i in name.indices) {
+            if (name[i] != '\'') validCharCount++
+            if (validCharCount > maxChars) return name.substring(0, i) + "…"
         }
+        return name
     }
     
     /**
@@ -159,6 +177,7 @@ object PityCounterModule : Module(
      */
     private fun handleDungeonEntry(dungeonData: DungeonData) {
         currentBossData = dungeonData.finalBoss
+        invalidateEnvCache()
     }
     
     /**
@@ -166,97 +185,122 @@ object PityCounterModule : Module(
      */
     private fun handleBossBarUpdate(bossBarMap: Map<java.util.UUID, net.minecraft.client.gui.components.LerpingBossEvent>) {
         // Check if in dungeon - don't override dungeon boss
-        val currentArea = try {
-            LocalAPI.getCurrentCharacterArea()
-        } catch (e: Exception) {
-            null
-        }
-        
-        if (LocalAPI.isInDungeon()) {
-            return // In dungeon, keep dungeon boss
-        }
+        if (LocalAPI.isInDungeon()) return
         
         // Get boss name from boss bar
-        val bossName = bossBarMap.values.firstOrNull()?.name?.string
-        if (bossName != null) {
-            // Find world boss by name
-            currentBossData = BossData.findByKey(bossName)
-        }
+        val bossName = bossBarMap.values.firstOrNull()?.name?.string ?: return
+        // Find world boss by name
+        currentBossData = BossData.findByKey(bossName)
+        invalidateEnvCache()
     }
     
-    /**
-     * Get items to display based on current boss
-     */
-    private fun getItemsToDisplay(): List<Item> {
-        // Skip if the player is in the nexus
-        if (LocalAPI.isInNexus()) return emptyList()
+    private fun updateState() {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastEnvCheckTime < 500) return
+        lastEnvCheckTime = currentTime
         
-        val player = mc.player ?: return emptyList()
+        cachedIsOnTelos = ServerUtils.isOnTelos()
+        if (!cachedIsOnTelos) {
+            cachedItemsToDisplay = emptyList()
+            return
+        }
         
+        cachedArea = try { LocalAPI.getCurrentCharacterArea() } catch (e: Exception) { "" }
+        if (LocalAPI.isInNexus()) {
+            cachedItemsToDisplay = emptyList()
+            return
+        }
+        
+        val player = mc.player ?: return
         val px = player.x
         val py = player.y
         val pz = player.z
         
-        // Shadowlands bosses section
-        if (LocalAPI.getCurrentCharacterArea() == "Shadowlands") {
-            // Check if in the arenas
-            if (pz < -360) {
-                currentBossData = BossData.HERALD
-                return currentBossData!!.items.toList()
-            } else if (pz > 500) {
-                currentBossData = BossData.REAPER
-                return currentBossData!!.items.toList()
-            } else if (px < -400) {
-                currentBossData = BossData.WARDEN
-                return currentBossData!!.items.toList()
-            }
-            
-            // Otherwise get closest
-            var minDistance = Double.MAX_VALUE
-            
-            for (boss in shadowlandsBosses) {
-                val dist = kotlin.math.abs(px - boss.spawnPosition!!.x) +
-                        kotlin.math.abs(py - boss.spawnPosition.y) +
-                        kotlin.math.abs(pz - boss.spawnPosition.z)
-                
-                if (dist < minDistance) {
-                    minDistance = dist
-                    currentBossData = boss
+        if (cachedArea == "Shadowlands") {
+            if (pz < -360) currentBossData = BossData.HERALD
+            else if (pz > 500) currentBossData = BossData.REAPER
+            else if (px < -400) currentBossData = BossData.WARDEN
+            else {
+                var minDistance = Double.MAX_VALUE
+                for (boss in shadowlandsBosses) {
+                    val sp = boss.spawnPosition ?: continue
+                    val dist = kotlin.math.abs(px - sp.x) + kotlin.math.abs(py - sp.y) + kotlin.math.abs(pz - sp.z)
+                    if (dist < minDistance) {
+                        minDistance = dist
+                        currentBossData = boss
+                    }
                 }
             }
-            
-            return currentBossData!!.items.toList()
+            cachedItemsToDisplay = currentBossData?.items?.toList() ?: emptyList()
+            return
         }
         
-        // Dungeon section
-        if (currentBossData != null) return currentBossData!!.items.toList()
+        if (currentBossData != null) {
+            cachedItemsToDisplay = currentBossData!!.items.toList()
+            return
+        }
         
-        // Realm boss section
         var nearestBossData: BossData? = null
-        var minDistance = 5625.0 // 75 squared
+        var minDistanceSq = 5625.0 // 75 squared
         
-        // Scan for realm bosses
         for ((boss, dataBoss) in realmBossMapping) {
             val pos = boss.spawnPosition
-            
-            // Calculate distance to the center of the boss spawn block
             val dx = px - (pos.x + 0.5)
             val dy = py - (pos.y + 0.5)
             val dz = pz - (pos.z + 0.5)
-            val distance = dx * dx + dy * dy + dz * dz
+            val distanceSq = dx * dx + dy * dy + dz * dz
             
-            if (distance <= minDistance) {
-                minDistance = distance
+            if (distanceSq <= minDistanceSq) {
+                minDistanceSq = distanceSq
                 nearestBossData = dataBoss
             }
         }
         
-        return nearestBossData?.items?.toList() ?: emptyList()
+        cachedItemsToDisplay = nearestBossData?.items?.toList() ?: emptyList()
     }
     
     /**
-     * Get text color for item rarity
+     * Builds the render cache only when items or settings change
      */
+    private fun updateRenderData(itemsToProcess: List<Item>, example: Boolean) {
+        val font = mc.font ?: return
+        renderDataList.clear()
+        val currentMaxChars = maxCharacters
+        
+        for (item in itemsToProcess) {
+            val itemName = getTruncatedName(item.displayName, currentMaxChars)
+            
+            val pityCountStr: String
+            val valueWidth: Int
+            if (example) {
+                val exCount = when (item) {
+                    Item.BLUNDERBOW -> 42
+                    Item.LOST_TREASURE_SCRIPTURE -> 87
+                    Item.SLIME_ARCHER -> 15
+                    Item.GOLDEN_STALLION -> 103
+                    else -> 50
+                }
+                pityCountStr = exCount.toString()
+                valueWidth = font.width(pityCountStr)
+            } else {
+                pityCountStr = cachedPityStrings[item.name] ?: "0"
+                valueWidth = cachedPityWidths[item.name] ?: font.width(pityCountStr)
+            }
+            
+            renderDataList.add(
+                CachedRenderItem(
+                    item = item,
+                    displayName = itemName,
+                    nameWidth = font.width(itemName),
+                    isFullyTruncated = (itemName == "-"),
+                    pityValueStr = pityCountStr,
+                    valueWidth = valueWidth,
+                    rarityColor = getTextColor(item.rarity)
+                )
+            )
+        }
+    }
+    
     private fun getTextColor(rarity: Item.Rarity): Int {
         return when (rarity) {
             Item.Rarity.IRRADIATED -> 0xFF15CD15.toInt()
@@ -282,70 +326,65 @@ object PityCounterModule : Module(
         description = "Position of the pity counter display",
         module = this
     ) render@{ example ->
-        if (!enabled && !example) return@render Pair(100, 50)
-        // Check if HUD is toggled
+        
+        if (!enabled && !example) return@render cachedRenderPair
         if (!showHud && !example) return@render Pair(0, 0)
         
-        if (!ServerUtils.isOnTelos() && !example) return@render Pair(100, 50)
+        updateState()
         
-        // Get items to display
-        val items : List<Item> = if (example) {
-            // Show Eddie's drops as an example
+        if (!cachedIsOnTelos && !example) return@render cachedRenderPair
+        
+        // Determine active items for this frame
+        val currentItems = if (example) {
             listOf(Item.BLUNDERBOW, Item.LOST_TREASURE_SCRIPTURE, Item.SLIME_ARCHER, Item.GOLDEN_STALLION)
-        } else if (LocalAPI.getCurrentCharacterArea() == "Rustborn Kingdom") {
+        } else if (cachedArea == "Rustborn Kingdom") {
             (BossData.VALERION.items + BossData.NEBULA.items + BossData.OPHANIM.items).toList()
-        } else if (LocalAPI.getCurrentCharacterArea() == "Celestial's Province") {
+        } else if (cachedArea == "Celestial's Province") {
             (BossData.ASMODEUS.items + BossData.SERAPHIM.items).toList()
         } else {
-            getItemsToDisplay()
+            cachedItemsToDisplay
         }
         
-        if (items.isEmpty()) return@render Pair(100, 50)
+        // If there are no items, exit cleanly
+        if (currentItems.isEmpty()) return@render Pair(100, 50)
+        
+        // Update the cache if ANY relevant state changed
+        if (forceRenderUpdate || currentItems != lastItemsToDisplay || maxCharacters != lastMaxChars || example != wasExample) {
+            updateRenderData(currentItems, example)
+            
+            lastItemsToDisplay = currentItems
+            lastMaxChars = maxCharacters
+            wasExample = example
+            forceRenderUpdate = false
+        }
+        
+        if (renderDataList.isEmpty()) return@render Pair(100, 50)
         
         val font = mc.font
         var anyFullyTruncated = false
+        var maxLabelWidth = 0
+        var maxValueWidth = 0
         
-        val processedItems = items.map { item ->
-            var itemName = item.displayName
-            
-            itemName = getTruncatedName(itemName, maxCharacters)
-            if (itemName == "-") anyFullyTruncated = true
-            
-            val pityCount = if (example) {
-                when (item) {
-                    Item.BLUNDERBOW -> 42
-                    Item.LOST_TREASURE_SCRIPTURE -> 87
-                    Item.SLIME_ARCHER -> 15
-                    Item.GOLDEN_STALLION -> 103
-                    else -> 50
-                }
-            } else {
-                cachedPityCounters[item.name] ?: 0
-            }
-            
-            Triple(item, itemName, pityCount.toString())
+        for (i in 0 until renderDataList.size) {
+            val data = renderDataList[i]
+            if (data.isFullyTruncated) anyFullyTruncated = true
+            if (data.nameWidth > maxLabelWidth && !data.isFullyTruncated) maxLabelWidth = data.nameWidth
+            if (data.valueWidth > maxValueWidth) maxValueWidth = data.valueWidth
         }
         
-        // Get boss name for title
-        val bossName = if (anyFullyTruncated) {
-            "Pity"
-        } else if (example) {
-            "Eddie"
-        } else if (LocalAPI.getCurrentCharacterArea() == "Rustborn Kingdom") {
-            "Rustborn Kingdom"
-        } else if (LocalAPI.getCurrentCharacterArea() == "Celestial's Province") {
-            "Celestial's Province"
-        } else {
-            currentBossData?.label ?: "Pity Counters"
-        }
+        val bossName = if (anyFullyTruncated) "Pity"
+        else if (example) "Eddie"
+        else if (cachedArea == "Rustborn Kingdom") "Rustborn Kingdom"
+        else if (cachedArea == "Celestial's Province") "Celestial's Province"
+        else currentBossData?.label ?: "Pity Counters"
         
-        // Cache the title to only format it once
+        // Cache title string and width to avoid rebuilding Component and width checks
         if (bossName != lastBossName || cachedTitleComponent == null) {
             lastBossName = bossName
             cachedTitleComponent = Component.literal(bossName).withStyle(ChatFormatting.BOLD)
+            cachedTitleWidth = font.width(cachedTitleComponent!!)
         }
         
-        val titleComponent = cachedTitleComponent!!
         val titleColor = widgetColor.rgba and 0x00FFFFFF
         val borderColor = 0xFF000000.toInt() or titleColor
         val bgColor = 0xC00C0C0C.toInt()
@@ -354,24 +393,25 @@ object PityCounterModule : Module(
         val lineSpacing = 16
         val targetItemSize = 14
         val itemPadding = targetItemSize + 4
-        val titleWidth = font.width(titleComponent)
         
         val spaceWidth = font.width(" ")
-        val doubleSpaceWidth = spaceWidth * 2
         val dashWidth = font.width("-")
-        
-        // Get actual space taken by longest required label
-        val maxLabelWidth = processedItems.maxOfOrNull { if (it.second == "-") 0 else font.width(it.second) } ?: 0
-        val maxValueWidth = processedItems.maxOfOrNull { font.width(it.third) } ?: font.width("999")
         
         val contentWidth = if (maxLabelWidth == 0) {
             targetItemSize + spaceWidth + dashWidth + spaceWidth + maxValueWidth
         } else {
-            itemPadding + maxLabelWidth + doubleSpaceWidth + maxValueWidth
+            itemPadding + maxLabelWidth + (spaceWidth * 2) + maxValueWidth
         }
         
-        val boxWidth = maxOf(titleWidth + 16, contentWidth + 12)
-        val boxHeight = font.lineHeight + 2 + (items.size * lineSpacing) + 4
+        val boxWidth = maxOf(cachedTitleWidth + 16, contentWidth + 12)
+        val boxHeight = font.lineHeight + 2 + (renderDataList.size * lineSpacing) + 4
+        
+        // Update returned dimension pair
+        if (boxWidth != lastRenderWidth || boxHeight != lastRenderHeight) {
+            lastRenderWidth = boxWidth
+            lastRenderHeight = boxHeight
+            cachedRenderPair = Pair(boxWidth, boxHeight)
+        }
         
         // Draw background
         fill(1, 0, boxWidth - 1, boxHeight, bgColor)
@@ -380,7 +420,7 @@ object PityCounterModule : Module(
         
         // Draw borders
         val strHeightHalf = font.lineHeight / 2
-        val strAreaWidth = titleWidth + 4
+        val strAreaWidth = cachedTitleWidth + 4
         
         // Top border (split around title)
         fill(2, 1 + strHeightHalf, 6, 2 + strHeightHalf, borderColor)
@@ -393,16 +433,17 @@ object PityCounterModule : Module(
         fill(boxWidth - 2, 2 + strHeightHalf, boxWidth - 1, boxHeight - 2, borderColor)
         
         // Draw title
-        drawString(font, titleComponent, 8, 2, borderColor, false)
+        drawString(font, cachedTitleComponent!!, 8, 2, borderColor, false)
         
         // Draw items
         var yOffset = font.lineHeight + 4
         val leftPadding = 6
         val scaleFactor = targetItemSize.toFloat() / 16f
         
-        for ((item, itemName, pityCountStr) in processedItems) {
+        for (i in 0 until renderDataList.size) {
+            val renderData = renderDataList[i]
             var xOffset = leftPadding
-            val itemStack = getItemStack(item)
+            val itemStack = getItemStack(renderData.item)
             
             // Item texture scaling & translating to be in the exact center
             pose().pushMatrix()
@@ -413,24 +454,21 @@ object PityCounterModule : Module(
             pose().popMatrix()
             
             xOffset += itemPadding
-            val textColor = getTextColor(item.rarity)
-            val valueWidth = font.width(pityCountStr)
-            val valueX = boxWidth - valueWidth - 6
+            val valueX = boxWidth - renderData.valueWidth - 6
             var drawX = xOffset
             
-            if (itemName == "-") {
-                val dashW = font.width(itemName)
+            if (renderData.isFullyTruncated) {
                 val textureEnd = xOffset - itemPadding + targetItemSize
                 val spaceAvailable = valueX - textureEnd
-                drawX = textureEnd + (spaceAvailable - dashW) / 2
+                drawX = textureEnd + (spaceAvailable - renderData.nameWidth) / 2
             }
             
-            drawString(font, itemName, drawX, yOffset, textColor, false)
-            drawString(font, pityCountStr, valueX, yOffset, valueColor.rgba, false)
+            drawString(font, renderData.displayName, drawX, yOffset, renderData.rarityColor, false)
+            drawString(font, renderData.pityValueStr, valueX, yOffset, valueColor.rgba, false)
             
             yOffset += lineSpacing
         }
         
-        Pair(boxWidth, boxHeight)
+        return@render cachedRenderPair
     }
 }

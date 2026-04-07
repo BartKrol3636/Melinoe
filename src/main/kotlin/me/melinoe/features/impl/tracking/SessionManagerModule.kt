@@ -40,7 +40,6 @@ object SessionManagerModule : Module(
     private val showTimeInRealm by BooleanSetting("Show Realm Time", true, desc = "Show time spent in the realm")
     private val showFameGain by BooleanSetting("Show Fame Gained", true, desc = "Show fame gained during this session")
     
-    
     // Tracking Variables
     private var sessionPlaytime = 0L
     private var timeInNexus = 0L
@@ -54,6 +53,15 @@ object SessionManagerModule : Module(
     private var lastWorldStr: String? = null
     private var lastPlayerId: UUID? = null
     private var needsBaseline = true
+    
+    // Layout Cache Variables
+    private var cachedLines = listOf<Pair<String, String>>()
+    private var cachedBoxWidth = 100
+    private var cachedBoxHeight = 50
+    private var lastPlaytimeRender = -1L
+    private var lastFameRender = -1
+    private var lastExampleState = false
+    private var lastSettingsHash = 0
     
     init {
         ClientTickEvents.END_CLIENT_TICK.register { client ->
@@ -70,24 +78,36 @@ object SessionManagerModule : Module(
         val s = seconds % 60
         
         if (timeFormat == 1) {
-            return if (h > 0) {
-                "${h}h ${m}m ${s}s"
-            } else {
-                "${m}m ${s}s"
-            }
+            return if (h > 0) "${h}h ${m}m ${s}s" else "${m}m ${s}s"
         }
         
-        // Default hh:mm:ss
+        val mStr = if (m < 10) "0$m" else m.toString()
+        val sStr = if (s < 10) "0$s" else s.toString()
         return if (h > 0) {
-            String.format("%02d:%02d:%02d", h, m, s)
+            val hStr = if (h < 10) "0$h" else h.toString()
+            "$hStr:$mStr:$sStr"
         } else {
-            String.format("%02d:%02d", m, s)
+            "$mStr:$sStr"
         }
     }
     
     /**
      * Get fame as an int by removing the commas
      */
+    private fun formatFame(fame: Int): String {
+        val str = fame.toString()
+        if (str.length <= 3) return str
+        val result = StringBuilder(str.length + 2)
+        val firstGroup = str.length % 3
+        for (i in str.indices) {
+            if (i > 0 && (i == firstGroup || (i > firstGroup && (i - firstGroup) % 3 == 0))) {
+                result.append(',')
+            }
+            result.append(str[i])
+        }
+        return result.toString()
+    }
+    
     private fun getParsedFame(): Int? {
         val raw = TabListUtils.getFame()
         if (raw.isNullOrEmpty()) return null
@@ -119,7 +139,6 @@ object SessionManagerModule : Module(
         
         // Fame Gained Calculations
         val currentFame = getParsedFame()
-        
         if (currentFame != null) {
             if (needsBaseline) {
                 // Ran when the player has entered a new world. Do not add this
@@ -130,9 +149,7 @@ object SessionManagerModule : Module(
                 if (lastFame != -1) {
                     val diff = currentFame - lastFame
                     // Only count positive gains in fame
-                    if (diff > 0) {
-                        fameGained += diff
-                    }
+                    if (diff > 0) fameGained += diff
                     // Always update tracker to current
                     lastFame = currentFame
                 } else {
@@ -180,61 +197,66 @@ object SessionManagerModule : Module(
     ) render@{ example ->
         if (!enabled && !example) return@render Pair(100, 50)
         
-        val lines = mutableListOf<Pair<String, String>>()
+        val currentSettingsHash = (if(showSessionPlaytime) 1 else 0) or
+                ((if(showTimeInNexus) 1 else 0) shl 1) or
+                ((if(showTimeInDungeons) 1 else 0) shl 2) or
+                ((if(showTimeInRealm) 1 else 0) shl 3) or
+                ((if(showFameGain) 1 else 0) shl 4) or
+                (timeFormat shl 5)
         
-        if (showSessionPlaytime || example) {
-            lines.add("Playtime" to formatTime(if (example) 3665 else sessionPlaytime))
-        }
-        if (showTimeInNexus || example) {
-            lines.add("Nexus Time" to formatTime(if (example) 600 else timeInNexus))
-        }
-        if (showTimeInDungeons || example) {
-            lines.add("Dungeon Time" to formatTime(if (example) 1500 else timeInDungeons))
-        }
-        if (showTimeInRealm || example) {
-            lines.add("Realm Time" to formatTime(if (example) 1565 else timeInRealm))
-        }
-        if (showFameGain || example) {
-            val displayFame = if (example) 15420 else fameGained
-            lines.add("Fame Gained" to String.format(Locale.US, "%,d", displayFame))
+        // Only recalculate strings and width/height if variables actually ticked or toggled
+        if (sessionPlaytime != lastPlaytimeRender || fameGained != lastFameRender || example != lastExampleState || currentSettingsHash != lastSettingsHash) {
+            lastPlaytimeRender = sessionPlaytime
+            lastFameRender = fameGained
+            lastExampleState = example
+            lastSettingsHash = currentSettingsHash
+            
+            val lines = mutableListOf<Pair<String, String>>()
+            if (showSessionPlaytime || example) lines.add("Playtime" to formatTime(if (example) 3665 else sessionPlaytime))
+            if (showTimeInNexus || example) lines.add("Nexus Time" to formatTime(if (example) 600 else timeInNexus))
+            if (showTimeInDungeons || example) lines.add("Dungeon Time" to formatTime(if (example) 1500 else timeInDungeons))
+            if (showTimeInRealm || example) lines.add("Realm Time" to formatTime(if (example) 1565 else timeInRealm))
+            if (showFameGain || example) lines.add("Fame Gained" to formatFame(if (example) 15420 else fameGained))
+            
+            cachedLines = lines
+            
+            val font = mc.font
+            val titleComponent = Component.literal("Session").withStyle(ChatFormatting.BOLD)
+            val titleWidth = font.width(titleComponent)
+            
+            // Width Calculation
+            val maxLabelWidth = lines.maxOfOrNull { font.width(it.first) } ?: 50
+            val maxValueWidth = lines.maxOfOrNull { font.width(it.second) } ?: 30
+            
+            val contentWidth = maxLabelWidth + maxValueWidth + 12
+            val lineSpacing = font.lineHeight + 2
+            
+            cachedBoxWidth = maxOf(titleWidth + 16, contentWidth + 12)
+            cachedBoxHeight = font.lineHeight + 2 + (lines.size * lineSpacing) + 4
         }
         
-        if (lines.isEmpty() && !example) return@render Pair(100, 50)
+        if (cachedLines.isEmpty() && !example) return@render Pair(100, 50)
         
-        // Rendering
         val font = mc.font
-        val titleComponent = Component.literal("Session").withStyle(ChatFormatting.BOLD)
         val titleColor = widgetColor.rgba and 0x00FFFFFF
         val borderColor = 0xFF000000.toInt() or titleColor
         val bgColor = 0xC00C0C0C.toInt()
         
-        val lineSpacing = font.lineHeight + 2
-        val titleWidth = font.width(titleComponent)
+        fill(1, 0, cachedBoxWidth - 1, cachedBoxHeight, bgColor)
+        fill(0, 1, 1, cachedBoxHeight - 1, bgColor)
+        fill(cachedBoxWidth - 1, 1, cachedBoxWidth, cachedBoxHeight - 1, bgColor)
         
-        // Width Calculation
-        val maxLabelWidth = lines.maxOfOrNull { font.width(it.first) } ?: 50
-        val maxValueWidth = lines.maxOfOrNull { font.width(it.second) } ?: 30
-        
-        val contentWidth = maxLabelWidth + maxValueWidth + 12
-        val boxWidth = maxOf(titleWidth + 16, contentWidth + 12)
-        val boxHeight = font.lineHeight + 2 + (lines.size * lineSpacing) + 4
-        
-        // Draw Background
-        fill(1, 0, boxWidth - 1, boxHeight, bgColor)
-        fill(0, 1, 1, boxHeight - 1, bgColor)
-        fill(boxWidth - 1, 1, boxWidth, boxHeight - 1, bgColor)
-        
-        // Draw Borders
+        val titleComponent = Component.literal("Session").withStyle(ChatFormatting.BOLD)
         val strHeightHalf = font.lineHeight / 2
-        val strAreaWidth = titleWidth + 4
+        val strAreaWidth = font.width(titleComponent) + 4
         
         // Top Split Border
         fill(2, 1 + strHeightHalf, 6, 2 + strHeightHalf, borderColor)
-        fill(2 + strAreaWidth + 4, 1 + strHeightHalf, boxWidth - 2, 2 + strHeightHalf, borderColor)
+        fill(2 + strAreaWidth + 4, 1 + strHeightHalf, cachedBoxWidth - 2, 2 + strHeightHalf, borderColor)
         // Other Borders
-        fill(2, boxHeight - 2, boxWidth - 2, boxHeight - 1, borderColor) // Bottom
-        fill(1, 2 + strHeightHalf, 2, boxHeight - 2, borderColor)        // Left
-        fill(boxWidth - 2, 2 + strHeightHalf, boxWidth - 1, boxHeight - 2, borderColor) // Right
+        fill(2, cachedBoxHeight - 2, cachedBoxWidth - 2, cachedBoxHeight - 1, borderColor) // Bottom
+        fill(1, 2 + strHeightHalf, 2, cachedBoxHeight - 2, borderColor) // Left
+        fill(cachedBoxWidth - 2, 2 + strHeightHalf, cachedBoxWidth - 1, cachedBoxHeight - 2, borderColor) // Right
         
         // Draw Title
         drawString(font, titleComponent, 8, 2, borderColor, false)
@@ -242,18 +264,19 @@ object SessionManagerModule : Module(
         // Draw Content
         var yOffset = font.lineHeight + 4
         val leftPadding = 6
+        val lineSpacing = font.lineHeight + 2
         
-        for ((label, value) in lines) {
+        for ((label, value) in cachedLines) {
             // Label (Left)
             drawString(font, label, leftPadding, yOffset, textColorSetting.rgba, false)
             
             // Value (Right)
-            val valueX = boxWidth - font.width(value) - 6
+            val valueX = cachedBoxWidth - font.width(value) - 6
             drawString(font, value, valueX, yOffset, valueColorSetting.rgba, false)
             
             yOffset += lineSpacing
         }
         
-        Pair(boxWidth, boxHeight)
+        return@render Pair(cachedBoxWidth, cachedBoxHeight)
     }
 }
