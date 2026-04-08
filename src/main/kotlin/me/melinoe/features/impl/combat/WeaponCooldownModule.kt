@@ -23,12 +23,12 @@ import kotlin.math.ceil
 import kotlin.math.sqrt
 
 /**
- * Ability Cooldown Module - visual cooldown bar with title popups.
+ * Weapon Cooldown Module - visual cooldown bar with title popups.
  */
-object AbilityCooldownModule : Module(
-    name = "Ability Cooldown",
+object WeaponCooldownModule : Module(
+    name = "Weapon Cooldown",
     category = Category.COMBAT,
-    description = "Displays ability cooldown with visual notifications."
+    description = "Displays weapon cooldown with visual notifications."
 ) {
     
     private const val BAR_WIDTH = 16
@@ -56,7 +56,7 @@ object AbilityCooldownModule : Module(
         scale = 2f,
         toggleable = true,
         default = true,
-        description = "Position of the ability ready title popup. Toggle to show/hide.",
+        description = "Position of the weapon ready title popup. Toggle to show/hide.",
         module = this
     ) { example ->
         val currentTitle = customTitle
@@ -77,20 +77,20 @@ object AbilityCooldownModule : Module(
         textWidth to textHeight
     }
     
-    val titleText: String by StringSetting("Title Text", "Ability Ready!", desc = "Text to display in title popup").withDependency { titleHud.enabled }
+    val titleText: String by StringSetting("Title Text", "Weapon Ready!", desc = "Text to display in title popup").withDependency { titleHud.enabled }
     val duration: Float by NumberSetting("Duration", 60.0f, 10.0f, 100.0f, desc = "Duration of title display in ticks").withDependency { titleHud.enabled }
     val titleColor: Color by ColorSetting("Title Color", Color(0xFF7CFFB2.toInt()), desc = "Color of the title text").withDependency { titleHud.enabled }
     
-    val playSound = registerSetting(BooleanSetting("Play Sound", true, desc = "Play sound when ability is ready"))
+    val playSound = registerSetting(BooleanSetting("Play Sound", true, desc = "Play sound when weapon is ready"))
     private val soundSettings = createSoundSettings(
         name = "Sound",
-        default = "entity.player.levelup",
+        default = "block.note_block.banjo",
         dependencies = { playSound.value }
     )
     
     // State Variables
-    private var trackedAbility = ItemStack.EMPTY
-    private var displayedAbility = ItemStack.EMPTY
+    private var trackedWeapon = ItemStack.EMPTY
+    private var displayedWeapon = ItemStack.EMPTY
     private var cooldownProgress = 0f
     private var previousCooldownProgress = 0f
     private var indicatorStartTime = 0L
@@ -98,7 +98,7 @@ object AbilityCooldownModule : Module(
     private var titleDisplayTicks = 0
     
     // Caches to prevent registry lookups & string allocations every tick
-    private val abilityItemCache = IdentityHashMap<Item, Boolean>()
+    private val weaponItemCache = IdentityHashMap<Item, Boolean>()
     
     init {
         on<TickEvent.End> {
@@ -106,17 +106,17 @@ object AbilityCooldownModule : Module(
             
             val player = mc.player ?: return@on
             
-            val heldAbility = getCurrentPlayerAbility(player)
-            displayedAbility = heldAbility
+            val heldWeapon = getCurrentPlayerWeapon(player)
+            displayedWeapon = heldWeapon
             
-            if (!heldAbility.isEmpty && !ItemStack.isSameItemSameComponents(heldAbility, trackedAbility)) {
-                trackedAbility = heldAbility.copy()
+            if (!heldWeapon.isEmpty && !ItemStack.isSameItemSameComponents(heldWeapon, trackedWeapon)) {
+                trackedWeapon = heldWeapon.copy()
             }
             
             // Track cooldown even if we switched items
-            if (!trackedAbility.isEmpty) {
+            if (!trackedWeapon.isEmpty) {
                 previousCooldownProgress = cooldownProgress
-                cooldownProgress = player.cooldowns.getCooldownPercent(trackedAbility, 0f)
+                cooldownProgress = player.cooldowns.getCooldownPercent(trackedWeapon, 0f)
                 
                 // Triggers exactly when it hits 0.0f
                 if (previousCooldownProgress > 0f && cooldownProgress == 0f) {
@@ -164,10 +164,11 @@ object AbilityCooldownModule : Module(
     fun renderHud(context: GuiGraphics) {
         if (!enabled) return
         if (!showHud.value) return
-        if (displayedAbility.isEmpty) return
+        if (displayedWeapon.isEmpty) return
         
         val window = mc.window
-        val barX = (window.guiScaledWidth / 2) + BAR_LEFT_OFFSET
+        // Mirrored to the left side
+        val barX = (window.guiScaledWidth / 2) - BAR_LEFT_OFFSET - BAR_HEIGHT
         val barY = (window.guiScaledHeight / 2) - (BAR_WIDTH / 2)
         val progress = cooldownProgress.coerceIn(0f, 1f)
         
@@ -217,10 +218,10 @@ object AbilityCooldownModule : Module(
             }
         }
         
-        // Draw Item Icon
-        val iconX = barX + BAR_HEIGHT + 1
+        // Draw Item Icon (mirrored to the left of the bar)
+        val iconX = barX - 16 - 1
         val iconY = barY + (BAR_WIDTH - 16) / 2
-        context.renderItem(displayedAbility, iconX, iconY)
+        context.renderItem(displayedWeapon, iconX, iconY)
     }
     
     private fun drawExclamationIndicator(context: GuiGraphics, cx: Int, cy: Int, alpha: Float) {
@@ -248,33 +249,30 @@ object AbilityCooldownModule : Module(
         try {
             playSoundSettings(soundSettings())
         } catch (e: Exception) {
-            Melinoe.logger.warn("Ability Cooldown: Failed to play sound: ${e.message}")
+            Melinoe.logger.warn("Weapon Cooldown: Failed to play sound: ${e.message}")
         }
     }
     
-    private fun getCurrentPlayerAbility(player: LocalPlayer): ItemStack {
+    private fun getCurrentPlayerWeapon(player: LocalPlayer): ItemStack {
         val mainHandStack = player.mainHandItem
-        if (isAbility(mainHandStack)) return mainHandStack
-        
-        val offHandStack = player.offhandItem
-        if (isAbility(offHandStack)) return offHandStack
+        if (isWeapon(mainHandStack)) return mainHandStack
         
         return ItemStack.EMPTY
     }
     
-    private fun isAbility(stack: ItemStack): Boolean {
+    private fun isWeapon(stack: ItemStack): Boolean {
         if (stack.isEmpty) return false
         val item = stack.item
         
-        return abilityItemCache.getOrPut(item) {
-            BuiltInRegistries.ITEM.getKey(item).path.endsWith("_hoe")
+        return weaponItemCache.getOrPut(item) {
+            BuiltInRegistries.ITEM.getKey(item).path.endsWith("_shovel")
         }
     }
     
     override fun onDisable() {
         super.onDisable()
-        trackedAbility = ItemStack.EMPTY
-        displayedAbility = ItemStack.EMPTY
+        trackedWeapon = ItemStack.EMPTY
+        displayedWeapon = ItemStack.EMPTY
         cooldownProgress = 0f
         previousCooldownProgress = 0f
         customTitle = null

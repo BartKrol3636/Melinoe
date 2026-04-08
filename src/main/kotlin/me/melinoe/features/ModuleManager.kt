@@ -104,11 +104,12 @@ object ModuleManager {
         val mc = Melinoe.mc
         if (mc.level == null || mc.player == null || mc.screen == me.melinoe.clickgui.HudManager || mc.options.hideGui) return
         
-        // Render ability cooldown HUD
-        me.melinoe.features.impl.combat.AbilityCooldownModule.renderHud(context)
+        // Render weapon & ability cooldown HUD
+        WeaponCooldownModule.renderHud(context)
+        AbilityCooldownModule.renderHud(context)
         
         // Render Health Bar HUD (unified module)
-        me.melinoe.features.impl.visual.healthbar.HealthBarModule.renderHud(context)
+        HealthBarModule.renderHud(context)
         
         context.pose().pushMatrix()
         val sf = mc.window.guiScale
@@ -160,6 +161,7 @@ object ModuleManager {
             WeaponRangeModule,
             AbilityRangeModule,
             NaturesGiftModule,
+            WeaponCooldownModule,
             AbilityCooldownModule,
             AssassinStacksModule,
 
