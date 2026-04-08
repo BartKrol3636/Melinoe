@@ -25,11 +25,14 @@ class Renderer3D(private val mc: Minecraft) {
         player: Player,
         tickDelta: Float,
         healthPercentage: Float,
-        healthBarColor: Int,
+        colorTop: Int,
+        colorBottom: Int,
+        backgroundColor: Int,
+        borderColor: Int,
         barWidth: Double,
         barHeight: Double,
         yPosition: Double,
-        showBarOnly: Boolean,
+        renderStyle: Int,
         healthDisplay: Int,
         textPosition: Int,
         healthText: String,
@@ -75,17 +78,19 @@ class Renderer3D(private val mc: Minecraft) {
         
         val matrix = matrices.last().pose()
         
-        // Render bar
-        if (!showBarOnly) {
+        // Render bar if not Text Only
+        if (renderStyle != 2) {
             drawSimpleHealthBar(
                 matrix,
                 bufferSource,
                 barWidth.toFloat(),
                 barHeight.toFloat(),
                 healthPercentage,
-                healthBarColor
+                colorTop,
+                colorBottom,
+                backgroundColor,
+                borderColor
             )
-            bufferSource.endBatch()
         }
         
         // Draw health text
@@ -116,71 +121,65 @@ class Renderer3D(private val mc: Minecraft) {
         width: Float,
         height: Float,
         healthPercentage: Float,
-        healthBarColor: Int
+        colorTop: Int,
+        colorBottom: Int,
+        backgroundColor: Int,
+        borderColor: Int
     ) {
         val borderWidth = Constants.BORDER_WIDTH_3D
         val innerWidth = width - borderWidth * 2
         val innerHeight = height - borderWidth * 2
-        val filledWidth = innerWidth * healthPercentage
         
-        // Draw border
-        drawRectCentered(matrix, bufferSource, width, height, Constants.BORDER_COLOR, 0.001f)
+        val halfWidth = width / 2f
+        val halfHeight = height / 2f
+        val innerHalfW = innerWidth / 2f
+        val innerHalfH = innerHeight / 2f
+        
+        val left = -innerHalfW
+        val right = innerHalfW
+        val top = innerHalfH
+        val bottom = -innerHalfH
+        
+        val filledRight = left + (innerWidth * healthPercentage)
+        
+        // Border
+        drawGradientRect(matrix, bufferSource, -halfWidth, halfWidth, halfHeight, -halfHeight, borderColor, borderColor, 0.001f)
         bufferSource.endBatch()
         
-        // Draw background
-        drawRectCentered(matrix, bufferSource, innerWidth, innerHeight, Constants.BACKGROUND_COLOR, 0.002f)
-        bufferSource.endBatch()
+        // Health Fill
+        if (filledRight > left) {
+            drawGradientRect(matrix, bufferSource, left, filledRight, top, bottom, colorTop, colorBottom, 0.002f)
+            bufferSource.endBatch()
+        }
         
-        // Draw health bar
-        if (filledWidth > 0) {
-            drawRectStart(matrix, bufferSource, filledWidth, innerWidth, innerHeight, healthBarColor, 0.003f)
+        // Background (Solid)
+        if (filledRight < right) {
+            drawGradientRect(matrix, bufferSource, filledRight, right, top, bottom, backgroundColor, backgroundColor, 0.002f)
             bufferSource.endBatch()
         }
     }
     
     /**
-     * Draw a centered rectangle
+     * Draw a centered rectangle with a gradient
      */
-    private fun drawRectCentered(
+    private fun drawGradientRect(
         matrix: org.joml.Matrix4f,
         bufferSource: net.minecraft.client.renderer.MultiBufferSource.BufferSource,
-        width: Float,
-        height: Float,
-        color: Int,
+        left: Float,
+        right: Float,
+        top: Float,
+        bottom: Float,
+        colorTop: Int,
+        colorBottom: Int,
         z: Float
     ) {
         val buffer = bufferSource.getBuffer(CustomRenderLayer.QUADS)
-        val halfWidth = width * 0.5f
-        val halfHeight = height * 0.5f
-        
-        buffer.addVertex(matrix, halfWidth, halfHeight, z).setColor(color)
-        buffer.addVertex(matrix, -halfWidth, halfHeight, z).setColor(color)
-        buffer.addVertex(matrix, -halfWidth, -halfHeight, z).setColor(color)
-        buffer.addVertex(matrix, halfWidth, -halfHeight, z).setColor(color)
-    }
-    
-    /**
-     * Draw a rectangle starting from the left (for health bar fill)
-     */
-    private fun drawRectStart(
-        matrix: org.joml.Matrix4f,
-        bufferSource: net.minecraft.client.renderer.MultiBufferSource.BufferSource,
-        width: Float,
-        fullWidth: Float,
-        fullHeight: Float,
-        color: Int,
-        z: Float
-    ) {
-        val buffer = bufferSource.getBuffer(CustomRenderLayer.QUADS)
-        val halfWidth = fullWidth * 0.5f
-        val halfHeight = fullHeight * 0.5f
-        val left = -halfWidth
-        val right = left + width
-        
-        buffer.addVertex(matrix, right, halfHeight, z).setColor(color)
-        buffer.addVertex(matrix, left, halfHeight, z).setColor(color)
-        buffer.addVertex(matrix, left, -halfHeight, z).setColor(color)
-        buffer.addVertex(matrix, right, -halfHeight, z).setColor(color)
+        // Top vertices receive the lighter color
+        buffer.addVertex(matrix, right, top, z).setColor(colorTop)
+        buffer.addVertex(matrix, left, top, z).setColor(colorTop)
+        // Bottom vertices receive the darker color
+        buffer.addVertex(matrix, left, bottom, z).setColor(colorBottom)
+        buffer.addVertex(matrix, right, bottom, z).setColor(colorBottom)
     }
     
     /**
@@ -204,9 +203,7 @@ class Renderer3D(private val mc: Minecraft) {
         val font = mc.font
         val scaledMatrix = matrices.last().pose()
         val textWidth = font.width(healthText)
-        
-        val borderWidth = Constants.BORDER_WIDTH_3D
-        val innerWidth = barWidth - borderWidth * 2
+        val innerWidth = barWidth - (Constants.BORDER_WIDTH_3D * 2)
         
         // Calculate X position
         val textX = when (textPosition) {
@@ -219,8 +216,7 @@ class Renderer3D(private val mc: Minecraft) {
         
         // Calculate Y position
         val textY = if (textPosition == 3) {
-            val barTopInTextSpace = (barHeight / 2f) / textScale
-            -barTopInTextSpace - (font.lineHeight / 2f)
+            -((barHeight / 2f) / textScale) - (font.lineHeight / 2f)
         } else {
             -font.lineHeight * 0.4f
         }

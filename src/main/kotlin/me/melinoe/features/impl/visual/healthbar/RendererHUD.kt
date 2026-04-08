@@ -15,7 +15,6 @@ import kotlin.math.sin
 class RendererHUD(private val mc: Minecraft) {
     // Cache for HUD rendering
     private var cachedScreenPos: Vec3? = null
-    private var cachedHealthPercentage: Float = 1f
     private var cachedPlayer: Player? = null
     
     /**
@@ -32,10 +31,7 @@ class RendererHUD(private val mc: Minecraft) {
         // In first person, use fixed position
         if (mc.options.cameraType.isFirstPerson && showInFirstPerson) {
             val window = mc.window
-            val screenWidth = window.guiScaledWidth
-            val screenHeight = window.guiScaledHeight
-            cachedScreenPos = Vec3(screenWidth / 2.0, (screenHeight / 2.0) + 30.0, 0.0)
-            cachedHealthPercentage = healthPercentage
+            cachedScreenPos = Vec3(window.guiScaledWidth / 2.0, (window.guiScaledHeight / 2.0) + 30.0, 0.0)
             cachedPlayer = player
             return
         }
@@ -55,7 +51,6 @@ class RendererHUD(private val mc: Minecraft) {
         
         // Project to screen and cache
         cachedScreenPos = worldToScreen(targetWorldPos, camera, yPosition)
-        cachedHealthPercentage = healthPercentage
         cachedPlayer = player
     }
     
@@ -64,10 +59,14 @@ class RendererHUD(private val mc: Minecraft) {
      */
     fun renderHud(
         guiGraphics: GuiGraphics,
-        healthBarColor: Int,
+        healthPercentage: Float,
+        colorTop: Int,
+        colorBottom: Int,
+        backgroundColor: Int,
+        borderColor: Int,
         barWidth: Double,
         barHeight: Double,
-        showBarOnly: Boolean,
+        renderStyle: Int,
         healthDisplay: Int,
         textPosition: Int,
         healthText: String,
@@ -85,15 +84,15 @@ class RendererHUD(private val mc: Minecraft) {
         val actualWidth = barWidth.toFloat()
         val actualHeight = barHeight.toFloat()
         
-        // Render bar
-        if (!showBarOnly) {
-            drawSimpleHealthBarHUD(guiGraphics, actualWidth, actualHeight, cachedHealthPercentage, healthBarColor)
+        // Render bar if not Text Only
+        if (renderStyle != 2) {
+            drawSimpleHealthBarHUD(guiGraphics, actualWidth, actualHeight, healthPercentage, colorTop, colorBottom, backgroundColor, borderColor)
         }
         
         // Draw health text with text scale applied
         if (healthDisplay != 3 && textPosition != 4 && healthText.isNotEmpty()) {
             matrices.pushMatrix()
-            matrices.scale(textScale.toFloat())
+            matrices.scale(textScale.toFloat(), textScale.toFloat())
             drawHealthTextHUD(guiGraphics, healthText, actualWidth, actualHeight, textColor, textOutline, textPosition, textScale.toFloat())
             matrices.popMatrix()
         }
@@ -165,15 +164,24 @@ class RendererHUD(private val mc: Minecraft) {
         width: Float,
         height: Float,
         healthPercentage: Float,
-        healthBarColor: Int
+        colorTop: Int,
+        colorBottom: Int,
+        backgroundColor: Int,
+        borderColor: Int
     ) {
         val borderWidth = Constants.BORDER_WIDTH_HUD
         val innerWidth = width - borderWidth * 2
-        val innerHeight = height - borderWidth * 2
         val filledWidth = innerWidth * healthPercentage
         
         val centerX = -width / 2
         val centerY = -height / 2
+        
+        val left = (centerX + borderWidth).toInt()
+        val top = (centerY + borderWidth).toInt()
+        val bottom = (centerY + height - borderWidth).toInt()
+        
+        val fillRight = (left + filledWidth).toInt()
+        val innerRight = (centerX + width - borderWidth).toInt()
         
         // Draw border
         guiGraphics.fill(
@@ -181,27 +189,17 @@ class RendererHUD(private val mc: Minecraft) {
             centerY.toInt(),
             (centerX + width).toInt(),
             (centerY + height).toInt(),
-            Constants.BORDER_COLOR
+            borderColor
         )
         
-        // Draw background
-        guiGraphics.fill(
-            (centerX + borderWidth).toInt(),
-            (centerY + borderWidth).toInt(),
-            (centerX + width - borderWidth).toInt(),
-            (centerY + height - borderWidth).toInt(),
-            Constants.BACKGROUND_COLOR
-        )
-        
-        // Draw health fill
+        // Draw main health fill with a Gradient
         if (filledWidth > 0) {
-            guiGraphics.fill(
-                (centerX + borderWidth).toInt(),
-                (centerY + borderWidth).toInt(),
-                (centerX + borderWidth + filledWidth).toInt(),
-                (centerY + height - borderWidth).toInt(),
-                healthBarColor
-            )
+            guiGraphics.fillGradient(left, top, fillRight, bottom, colorTop, colorBottom)
+        }
+        
+        // Draw background fill
+        if (fillRight < innerRight) {
+            guiGraphics.fill(fillRight, top, innerRight, bottom, backgroundColor)
         }
     }
     
@@ -235,8 +233,7 @@ class RendererHUD(private val mc: Minecraft) {
         
         // Calculate Y position (accounting for text scale when positioning relative to bar)
         val textY = if (textPosition == 3) {
-            val barTopInTextSpace = (barHeight / 2f) / textScale
-            -barTopInTextSpace - (font.lineHeight / 2f)
+            -((barHeight / 2f) / textScale) - (font.lineHeight / 2f)
         } else {
             -font.lineHeight / 2f
         }
