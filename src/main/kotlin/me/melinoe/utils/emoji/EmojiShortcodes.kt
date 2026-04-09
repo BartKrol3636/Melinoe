@@ -63,7 +63,7 @@ object EmojiShortcodes {
         "🥲" to ":smiling_face_with_tear:", "😋" to ":yum:", "😛" to ":stuck_out_tongue:",
         "😜" to ":stuck_out_tongue_winking_eye:", "🤪" to ":zany_face:", "😝" to ":stuck_out_tongue_closed_eyes:",
         "🤑" to ":money_mouth:", "🤗" to ":hugging:", "🤭" to ":face_with_hand_over_mouth:",
-        "🫢" to ":face_with_open_eyes_and_hand_over_mouth:", "🫣" to ":face_with_peeking_eye:",
+        "🫢" to ":gasp:", "🫣" to ":face_with_peeking_eye:",
         "🤫" to ":shushing_face:", "🤔" to ":thinking:", "🫡" to ":saluting_face:",
         "🤐" to ":zipper_mouth:", "🤨" to ":face_with_raised_eyebrow:", "😐" to ":neutral_face:",
         "😑" to ":expressionless:", "😶" to ":no_mouth:", "🫥" to ":dotted_line_face:",
@@ -91,7 +91,7 @@ object EmojiShortcodes {
         "💜" to ":purple_heart:", "🤍" to ":white_heart:", "💯" to ":100:",
         "💥" to ":boom:", "💦" to ":sweat_drops:", "💬" to ":speech_balloon:",
         "💤" to ":zzz:", "👋" to ":wave:", "👌" to ":ok_hand:", "🤌" to ":pinched_fingers:",
-        "🤏" to ":pinching_hand:", "✌️" to ":v:", "🫰" to ":hand_with_index_finger_and_thumb_crossed:",
+        "🤏" to ":pinching_hand:", "✌️" to ":v:", "🫰" to ":finger_heart:",
         "🤙" to ":call_me:", "👈" to ":point_left:", "👉" to ":point_right:",
         "👆" to ":point_up_2:", "🖕" to ":middle_finger:", "👇" to ":point_down:",
         "☝️" to ":point_up:", "👍" to ":thumbsup:", "👎" to ":thumbsdown:",
@@ -102,7 +102,7 @@ object EmojiShortcodes {
         "👅" to ":tongue:", "🫦" to ":biting_lip:", "🥀" to ":wilted_rose:",
         "🏆" to ":trophy:", "🥇" to ":first_place:", "🥈" to ":second_place:",
         "🥉" to ":third_place:", "✨" to ":sparkles:", "🎀" to ":ribbon:",
-        "❤️‍🔥" to ":heart_on_fire:", "❤️‍🩹" to ":mending_heart:"
+        "❤️‍🔥" to ":heart_on_fire:", "❤️‍🩹" to ":mending_heart:", "🔥" to ":fire:"
     )
     
     // Pre-calculated & cached for the TextInputHandler typing hook
