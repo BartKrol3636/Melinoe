@@ -11,9 +11,14 @@ import me.melinoe.utils.Message
 import me.melinoe.utils.emoji.EmojiShortcodes
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
-import net.minecraft.network.chat.Component
-import net.minecraft.network.chat.Style
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.network.chat.ClickEvent
+import net.minecraft.network.chat.Component
+import net.minecraft.network.chat.HoverEvent
+import net.minecraft.network.chat.MutableComponent
+import net.minecraft.network.chat.Style
+import net.minecraft.network.chat.contents.PlainTextContents
+import net.minecraft.network.chat.contents.TranslatableContents
 import org.lwjgl.glfw.GLFW
 import java.io.File
 import java.util.Optional
@@ -24,7 +29,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * Represents the different visual tabs above the chat box
  */
 enum class ChatTab(val displayName: String) {
-    ALL("All"), CHAT("Chat"), GROUP("Group"), GUILD("Guild"),
+    ALL("All"), CHAT("Chat"), CALLOUTS("Callouts"), GROUP("Group"), GUILD("Guild"),
     MESSAGES("Messages"), DROPS("Drops"), DEATHS("Deaths"), CRAFTS("Crafts"), UTILITY("Utility")
 }
 
@@ -57,6 +62,7 @@ object ChatModule : Module(
     
     private val tabsDropdown by DropdownSetting("Chat Tabs", false).withDependency { enableChatTabs }
     private val showChatTab by BooleanSetting("Show Chat Tab", false, "Display the Chat tab").withDependency { tabsDropdown && enableChatTabs }
+    private val showCalloutsTab by BooleanSetting("Show Callouts Tab", true, "Display the Callouts tab").withDependency { tabsDropdown && enableChatTabs }
     private val showGroupTab by BooleanSetting("Show Group Tab", false, "Display the Group tab").withDependency { tabsDropdown && enableChatTabs }
     private val showGuildTab by BooleanSetting("Show Guild Tab", true, "Display the Guild tab").withDependency { tabsDropdown && enableChatTabs }
     private val showMessagesTab by BooleanSetting("Show Messages Tab", true, "Display the Messages tab").withDependency { tabsDropdown && enableChatTabs }
@@ -161,13 +167,15 @@ object ChatModule : Module(
             if (showDropsTab) hash = hash or 16
             if (showDeathsTab) hash = hash or 32
             if (showCraftsTab) hash = hash or 64
+            if (showCalloutsTab) hash = hash or 128
             
             // Rebuild the list only if the toggles have changed
             if (hash != lastTabSettingsHash) {
                 lastTabSettingsHash = hash
-                cachedAvailableTabs = buildList(9) {
+                cachedAvailableTabs = buildList(10) {
                     add(ChatTab.ALL) // ALL tab is always visible
                     if (showChatTab) add(ChatTab.CHAT)
+                    if (showCalloutsTab) add(ChatTab.CALLOUTS)
                     if (showGroupTab) add(ChatTab.GROUP)
                     if (showGuildTab) add(ChatTab.GUILD)
                     if (showMessagesTab) add(ChatTab.MESSAGES)
@@ -413,6 +421,7 @@ object ChatModule : Module(
      */
     fun getProcessedMessage(original: Component): ProcessedMessage {
         val plainText = original.string
+        val calloutMatch = KeybindsModule.parseCallout(plainText)
         
         // Flag transient (temporary) client-side messages so they don't clog up the real chat log file
         if (plainText.contains("You cannot manually switch chat modes") || (plainText.contains("Melinoe") && plainText.contains("›"))) {
@@ -420,14 +429,66 @@ object ChatModule : Module(
         }
         
         return processedCache.getOrPut(original) {
-            val category = determineCategory(plainText)
+            val category = if (calloutMatch != null) ChatTab.CALLOUTS else determineCategory(plainText)
             
             val shouldCensor = (hideGroupContent && category == ChatTab.GROUP) ||
                     (hideGuildContent && category == ChatTab.GUILD)
             
-            val censored = if (shouldCensor) censorComponent(original, plainText) else original
-            ProcessedMessage(category, censored, isTransient = false)
+            var processed = if (shouldCensor) censorComponent(original, plainText) else original
+            
+            if (calloutMatch != null) {
+                val myName = Minecraft.getInstance().player?.name?.string
+                if (!calloutMatch.player.equals(myName, ignoreCase = true)) {
+                    val contentIndex = plainText.indexOf(": ") + 2
+                    if (contentIndex >= 2) {
+                        val clickEvent = ClickEvent.RunCommand("/tp ${calloutMatch.player}")
+                        val hoverEvent = HoverEvent.ShowText(
+                            Component.literal("Click to teleport to ${calloutMatch.player}").withStyle(net.minecraft.ChatFormatting.YELLOW)
+                        )
+                        processed = makeClickableComponent(processed, contentIndex, IntArray(1) { 0 }, clickEvent, hoverEvent)
+                    }
+                }
+            }
+            
+            ProcessedMessage(category, processed, isTransient = false)
         }
+    }
+    
+    private fun makeClickableComponent(node: Component, contentStartIndex: Int, currentLen: IntArray, clickEvent: ClickEvent, hoverEvent: HoverEvent): Component {
+        val result: MutableComponent
+        val contents = node.contents
+        
+        if (contents is PlainTextContents) {
+            val text = contents.text()
+            val textLen = text.length
+            
+            if (currentLen[0] >= contentStartIndex) {
+                result = Component.literal(text).withStyle(node.style.withClickEvent(clickEvent).withHoverEvent(hoverEvent))
+                currentLen[0] += textLen
+            } else if (currentLen[0] + textLen > contentStartIndex) {
+                val splitIdx = contentStartIndex - currentLen[0]
+                val prefixPart = text.substring(0, splitIdx)
+                val contentPart = text.substring(splitIdx)
+                
+                result = Component.literal(prefixPart).withStyle(node.style)
+                result.append(Component.literal(contentPart).withStyle(node.style.withClickEvent(clickEvent).withHoverEvent(hoverEvent)))
+                currentLen[0] += textLen
+            } else {
+                result = Component.literal(text).withStyle(node.style)
+                currentLen[0] += textLen
+            }
+        } else if (contents is TranslatableContents) {
+            result = Component.translatable(contents.key, *contents.args).withStyle(node.style)
+        } else {
+            result = node.copy()
+            result.siblings.clear()
+        }
+        
+        for (sibling in node.siblings) {
+            result.append(makeClickableComponent(sibling, contentStartIndex, currentLen, clickEvent, hoverEvent))
+        }
+        
+        return result
     }
     
     /**

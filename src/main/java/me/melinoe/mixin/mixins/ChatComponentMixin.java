@@ -134,8 +134,12 @@ public abstract class ChatComponentMixin implements ChatTabs {
                 melinoe$addToTabQueue(activeTab, newLines, true, chatFocused, true);
             }
         } else {
-            // Add normal categorized messages to their specific background tab history
-            if (messageTab != ChatTab.ALL) {
+            // Check if it's a Callout, which requires rendering on both Chat and Callouts tabs
+            if (messageTab == ChatTab.CALLOUTS) {
+                melinoe$addToTabQueue(ChatTab.CALLOUTS, newLines, activeTab == ChatTab.CALLOUTS, chatFocused, false);
+                melinoe$addToTabQueue(ChatTab.CHAT, newLines, activeTab == ChatTab.CHAT, chatFocused, false);
+            } else if (messageTab != ChatTab.ALL) {
+                // Standard categorized message queue
                 melinoe$addToTabQueue(messageTab, newLines, activeTab == messageTab, chatFocused, false);
             }
         }

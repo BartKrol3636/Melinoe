@@ -26,6 +26,9 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         NA, EU, SG, UNKNOWN
     }
     
+    private var lastKnownRegion: Region = Region.SG
+    private var lastKnownServers: List<String> = RealmFetcher.sgServers
+    
     private var cachedRegularServers = listOf<String>()
     private var cachedHubServers = listOf<String>()
     private var cachedButtonWidth = 0
@@ -48,7 +51,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
     }
     
     private fun calculateOptimalButtonWidth(): Int {
-        val textRenderer = minecraft!!.font
+        val textRenderer = minecraft?.font ?: return 100
         var maxWidth = 0
         
         // Dynamically measure width of all current servers
@@ -72,17 +75,24 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         val currentWorld = LocalAPI.getCurrentCharacterWorld()
         val region = classifyRegion(currentWorld)
         
-        return when (region) {
-            Region.NA -> RealmFetcher.naServers
-            Region.EU -> RealmFetcher.euServers
-            Region.SG -> RealmFetcher.sgServers
-            Region.UNKNOWN -> listOf("Not on Telos")
+        // Only update the cache if a valid region was successfully detected
+        if (region != Region.UNKNOWN) {
+            lastKnownRegion = region
+            lastKnownServers = when (region) {
+                Region.NA -> RealmFetcher.naServers
+                Region.EU -> RealmFetcher.euServers
+                Region.SG -> RealmFetcher.sgServers
+                else -> RealmFetcher.sgServers
+            }
         }
+        
+        // Always return cache so the screen doesn't wait/block upon opening
+        return lastKnownServers
     }
     
     private fun classifyRegion(world: String): Region {
         val lower = world.trim().lowercase()
-        if (lower.isEmpty()) return Region.UNKNOWN
+        if (lower.isEmpty() || lower == "unknown") return Region.UNKNOWN
         
         return when (lower[0]) {
             'n' -> Region.NA
@@ -111,7 +121,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
     
     private fun createButtons(servers: List<String>) {
         for (serverName in servers) {
-            val button = Button.builder(Component.literal(serverName)) { btn ->
+            val button = Button.builder(Component.literal(serverName)) { _ ->
                 val player = minecraft?.player
                 if (player != null && me.melinoe.utils.ServerUtils.isOnTelos()) {
                     player.connection.sendCommand("joinq $serverName")
@@ -153,6 +163,13 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         
         // Get current server to disable its button
         val currentServerFull = LocalAPI.getCurrentCharacterWorld()
+        val currentRegion = classifyRegion(currentServerFull)
+        
+        // Rebuild the layout seamlessly if the region updates while the screen is open
+        if (currentRegion != Region.UNKNOWN && currentRegion != lastKnownRegion) {
+            init()
+        }
+        
         // Extract just the server name (after comma and space, e.g., "Germany, Draskov" -> "Draskov")
         val currentServerName = if (currentServerFull.contains(", ")) {
             currentServerFull.substringAfterLast(", ").trim()
@@ -162,7 +179,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         
         // Update button states and text based on current server
         for ((serverName, button) in buttonLookup) {
-            if (serverName == currentServerName) {
+            if (serverName.equals(currentServerName, ignoreCase = true)) {
                 button.active = false
                 // Set strikethrough text for current server
                 button.message = Component.literal(serverName).withStyle { style ->
@@ -242,7 +259,7 @@ object RealmSelectorScreen : Screen(Component.literal("Realm Selector")) {
         }
         
         // Render current server indicator text (use full server name)
-        if (currentServerFull.isNotEmpty()) {
+        if (currentServerFull.isNotEmpty() && currentServerFull.lowercase() != "unknown") {
             // "Current:" in bold dark red (0xFF8A0000), server name in bright red (0xFF3333) without bold
             val currentLabel = "§lCurrent: "
             val serverName = currentServerFull

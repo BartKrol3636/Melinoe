@@ -1,9 +1,13 @@
 package me.melinoe.features.impl.misc
 
+import com.google.common.cache.Cache
+import com.google.common.cache.CacheBuilder
 import me.melinoe.Melinoe
 import me.melinoe.clickgui.settings.Setting.Companion.withDependency
 import me.melinoe.clickgui.settings.impl.DropdownSetting
 import me.melinoe.clickgui.settings.impl.KeybindSetting
+import me.melinoe.events.RenderEvent
+import me.melinoe.events.core.on
 import me.melinoe.features.Category
 import me.melinoe.features.Module
 import me.melinoe.mixin.accessors.AbstractContainerScreenAccessor
@@ -19,6 +23,12 @@ import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.entity.monster.Evoker
 import org.lwjgl.glfw.GLFW
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+
+data class CalloutMatch(val realm: String, val player: String)
+
+private data class CalloutData(val time: Long, val hp: Int)
 
 /**
  * Keybinds Module - Provides configurable keybinds for various commands and menus
@@ -94,6 +104,35 @@ object KeybindsModule : Module(
     private var realmSelectorPressCount = 0
     private var realmSelectorLastPress = 0L
     
+    private var lastUsedTime: Long = 0L
+    private val PORTAL_REGEX = Regex("-=\\[(.*?)]=-")
+    
+    private val globalCallouts: Cache<String, CalloutData> = CacheBuilder.newBuilder()
+        .expireAfterWrite(1, TimeUnit.MINUTES)
+        .build()
+    
+    private val calloutPlayers: Cache<String, Pair<String, Long>> = CacheBuilder.newBuilder()
+        .expireAfterWrite(1, TimeUnit.HOURS)
+        .build()
+    
+    private val CHAT_MESSAGE_REGEX = Regex("^\\[([^\\]]+)\\].*?\\s+([A-Za-z0-9_]+):\\s+(.*)")
+    private val CALLOUT_TELEPORT_REGEX = Regex("^Teleport for (.+?) - (?:(\\d+)% HP|\\d+s left)")
+    private val CALLOUT_BOSS_HP_REGEX = Regex("^(.+?) is at (\\d+)% HP - .*")
+    private val CALLOUT_DUNGEON_REGEX = Regex("^Currently in (.+)")
+    
+    private var lastClickTpTarget: Pair<String, String>? = null
+    private var lastClickTpTime: Long = 0L
+    
+    // Dynamic ping-safe TP variables
+    private var pendingCrossRealmTpPlayer: String? = null
+    private var pendingCrossRealmTpTargetRealm: String? = null
+    private var crossRealmTpTimeout: Long = 0L
+    private var lastCrossRealmCheckTime: Long = 0L
+    
+    // Realm caching to prevent heavy string manipulation every frame
+    private var cachedRealm = "unknown"
+    private var lastRealmCheckTime = 0L
+    
     init {
         // Register the item info keybind setting
         registerSetting(itemInfoKeySetting)
@@ -106,6 +145,106 @@ object KeybindsModule : Module(
                 }
             }
         }
+        
+        on<RenderEvent.Extract> {
+            if (pendingCrossRealmTpPlayer != null && pendingCrossRealmTpTargetRealm != null) {
+                val now = System.currentTimeMillis()
+                
+                // Throttle string/realm checks to 250ms instead of running every single frame to save CPU
+                if (now - lastCrossRealmCheckTime < 250L) return@on
+                lastCrossRealmCheckTime = now
+                
+                val currentRealm = getCurrentRealm()
+                
+                // Fire TP instantly once the target realm matches our actual realm
+                if (currentRealm.equals(pendingCrossRealmTpTargetRealm, ignoreCase = true)) {
+                    mc.player?.connection?.sendCommand("tp $pendingCrossRealmTpPlayer")
+                    Message.success("<#AAAAAA>Cross-realm teleporting to <#FFFF00><underlined>$pendingCrossRealmTpPlayer</underlined>.")
+                    pendingCrossRealmTpPlayer = null
+                    pendingCrossRealmTpTargetRealm = null
+                } else if (now > crossRealmTpTimeout) {
+                    Message.error("Cross-realm teleport timed out.")
+                    pendingCrossRealmTpPlayer = null
+                    pendingCrossRealmTpTargetRealm = null
+                }
+            }
+        }
+    }
+    
+    fun parseCallout(plainText: String): CalloutMatch? {
+        val now = System.currentTimeMillis()
+        
+        val match = CHAT_MESSAGE_REGEX.find(plainText) ?: return null
+        val realm = match.groupValues[1].lowercase()
+        val player = match.groupValues[2]
+        val content = match.groupValues[3]
+        
+        var target: String? = null
+        var hp = -1
+        
+        val tpMatch = CALLOUT_TELEPORT_REGEX.find(content)
+        if (tpMatch != null) {
+            target = tpMatch.groupValues[1]
+            hp = tpMatch.groupValues[2].toIntOrNull() ?: -1
+        } else {
+            val hpMatch = CALLOUT_BOSS_HP_REGEX.find(content)
+            if (hpMatch != null) {
+                target = hpMatch.groupValues[1]
+                hp = hpMatch.groupValues[2].toIntOrNull() ?: -1
+            } else {
+                val dMatch = CALLOUT_DUNGEON_REGEX.find(content)
+                if (dMatch != null) target = dMatch.groupValues[1]
+            }
+        }
+        
+        if (target != null) {
+            globalCallouts.put("${realm}_${target.lowercase()}", CalloutData(now, hp))
+            calloutPlayers.put(player.lowercase(), Pair(realm, now))
+            return CalloutMatch(realm, player)
+        }
+        return null
+    }
+    
+    private fun getCurrentRealm(): String {
+        val now = System.currentTimeMillis()
+        // Cache the realm string for 1 second to eliminate GC allocation on the render thread
+        if (now - lastRealmCheckTime < 1000L) return cachedRealm
+        
+        val server = TabListUtils.getServer() ?: return "unknown"
+        val parts = server.removePrefix("[").removeSuffix("]").split(",")
+        cachedRealm = if (parts.size >= 2) parts[1].trim().lowercase() else parts[0].trim().lowercase()
+        lastRealmCheckTime = now
+        return cachedRealm
+    }
+    
+    fun handleCalloutTeleport(player: String): Boolean {
+        val targetRealm = calloutPlayers.getIfPresent(player.lowercase())?.first
+        val currentRealm = getCurrentRealm()
+        
+        // If we don't know this player's realm from a callout, or they are in the same realm, just TP
+        if (targetRealm == null || currentRealm.equals(targetRealm, ignoreCase = true)) {
+            mc.player?.connection?.sendCommand("tp $player")
+            return true
+        }
+        
+        // Cross realm TP logic
+        val now = System.currentTimeMillis()
+        val targetPair = Pair(player.lowercase(), targetRealm.lowercase())
+        
+        // Require user to click twice for safety. On second click, start cross-realm sequence
+        if (lastClickTpTarget == targetPair && now - lastClickTpTime < 5000L) {
+            pendingCrossRealmTpPlayer = player
+            pendingCrossRealmTpTargetRealm = targetRealm
+            crossRealmTpTimeout = now + 10000L // 10 second safety timeout for lag
+            
+            mc.player?.connection?.sendCommand("joinq $targetRealm")
+            lastClickTpTarget = null
+        } else {
+            lastClickTpTarget = targetPair
+            lastClickTpTime = now
+            Message.actionBar("${getMelinoeWatermark()} <#FFFF55>This player is in another realm. Click the message again to move and teleport.")
+        }
+        return true
     }
 
     /**
@@ -175,10 +314,6 @@ object KeybindsModule : Module(
         }
     }
     
-    private var lastUsedTime: Long = 0L
-    private val COOLDOWN_MS: Long = 10000L
-    private val PORTAL_REGEX = Regex("-=\\[(.*?)]=-")
-    
     /**
      * Handle boss phase keybind - sends current phase or dungeon status
      */
@@ -196,17 +331,15 @@ object KeybindsModule : Module(
             return
         }
         
-        // Cooldown handling
         val currentTime = System.currentTimeMillis()
-        if (currentTime - lastUsedTime < COOLDOWN_MS) {
-            val remainingSeconds = (COOLDOWN_MS - (currentTime - lastUsedTime)) / 1000.0
-            Message.error(String.format("Please wait %.1fs before using this again.", remainingSeconds))
-            return
-        }
         
         val currentArea = LocalAPI.getCurrentCharacterArea()
         val hp = getBossHealthPercentage()
         val currentBoss = LocalAPI.getCurrentCharacterFighting()
+        
+        var targetName: String? = null
+        var messageToSend: String? = null
+        var trackedHp = -1
         
         if (LocalAPI.isInDungeon()) {
             if (hp <= 0) {
@@ -215,15 +348,19 @@ object KeybindsModule : Module(
             }
             
             val currentPhase = getCurrentPhase(currentBoss, hp)
-            if (currentPhase != null) {
-                player.connection.sendChat("$currentBoss is at $hp% HP - $currentPhase")
+            messageToSend = if (currentPhase != null) {
+                "$currentBoss is at $hp% HP - $currentPhase"
             } else {
-                player.connection.sendChat("$currentBoss is at $hp% HP - $currentArea")
+                "$currentBoss is at $hp% HP - $currentArea"
             }
+            targetName = currentBoss
+            trackedHp = hp
             lastUsedTime = currentTime
         } else {
             if (hp > 0) {
-                player.connection.sendChat("Teleport for $currentBoss - $hp% HP")
+                targetName = currentBoss
+                messageToSend = "Teleport for $currentBoss - $hp% HP"
+                trackedHp = hp
                 lastUsedTime = currentTime
             } else {
                 val level = mc.level ?: return
@@ -273,15 +410,43 @@ object KeybindsModule : Module(
                     val cleanName = runCatching { PortalData.valueOf(rawName).label }.getOrNull()
                     
                     if (cleanName != null) {
-                        player.connection.sendChat("Teleport for $cleanName - ${value}s left")
+                        targetName = cleanName
+                        messageToSend = "Teleport for $cleanName - ${value}s left"
                         lastUsedTime = currentTime
                     } else {
                         Melinoe.logger.error("Unknown portal type detected: $rawName")
                     }
-                } else {
-                    Message.error("No boss or portal detected!")
                 }
             }
+        }
+        
+        if (targetName != null && messageToSend != null) {
+            val realm = getCurrentRealm()
+            val globalKey = "${realm}_${targetName.lowercase()}"
+            val lastData = globalCallouts.getIfPresent(globalKey)
+            
+            if (lastData != null) {
+                val timeDiff = currentTime - lastData.time
+                val isBoss = trackedHp != -1
+                
+                val requiredCooldown = if (isBoss && lastData.hp != -1) {
+                    if (abs(lastData.hp - trackedHp) >= 10) 10000L else 15000L
+                } else {
+                    15000L
+                }
+                
+                if (timeDiff < requiredCooldown) {
+                    val remainingSeconds = (requiredCooldown - timeDiff) / 1000.0
+                    Message.error(String.format("Someone already called out $targetName in this realm! Please wait %.1fs.", remainingSeconds))
+                    return
+                }
+            }
+            
+            player.connection.sendChat(messageToSend)
+            lastUsedTime = currentTime
+            globalCallouts.put(globalKey, CalloutData(currentTime, trackedHp))
+        } else {
+            Message.error("No boss or portal detected!")
         }
     }
     

@@ -28,6 +28,7 @@
     "mixins.SoundSystemMixin",
     "mixins.EntityRendererMixin",
     "mixins.GuiMixin",
+    "mixins.ScreenMixin",
     "accessors.AbstractContainerScreenAccessor",
     "accessors.CompositeRenderTypeAccessor",
     "accessors.ServerboundInteractPacketAccessor"
