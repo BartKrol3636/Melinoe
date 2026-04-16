@@ -2,7 +2,6 @@ package me.melinoe.utils.render
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
-import it.unimi.dsi.fastutil.objects.ObjectArrayList
 import me.melinoe.Melinoe
 import me.melinoe.events.RenderEvent
 import me.melinoe.events.core.on
@@ -11,10 +10,14 @@ import me.melinoe.utils.Color.Companion.multiplyAlpha
 import me.melinoe.utils.component1
 import me.melinoe.utils.component2
 import me.melinoe.utils.component3
+import me.melinoe.utils.unaryMinus
+import it.unimi.dsi.fastutil.objects.ObjectArrayList
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.cos
+import kotlin.math.sin
 
 
 private const val DEPTH = 0
