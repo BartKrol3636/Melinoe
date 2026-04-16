@@ -70,7 +70,7 @@ object RenderBatchManager {
             matrix.renderBatchedWireBoxes(renderConsumer.wireBoxes, bufferSource)
             matrix.renderBatchedFilledBoxes(renderConsumer.filledBoxes, bufferSource)
             matrix.renderBatchedTriangleStrips(renderConsumer.triangleStrips, bufferSource)
-            matrix.renderBatchedTexts(renderConsumer.texts, bufferSource, camera)
+            matrix.renderBatchedTexts(renderConsumer.texts, bufferSource)
             
             matrix.popPose()
             
@@ -197,17 +197,13 @@ private fun PoseStack.renderBatchedTriangleStrips(
 private fun PoseStack.renderBatchedTexts(
     texts: List<TextData>,
     bufferSource: MultiBufferSource.BufferSource,
-    camera: Vec3
 ) {
-    val cameraPos = -camera
-    
     for (textData in texts) {
         pushPose()
         val pose = last().pose()
         val scaleFactor = textData.scale * 0.025f
         
         pose.translate(textData.pos.x.toFloat(), textData.pos.y.toFloat(), textData.pos.z.toFloat())
-            .translate(cameraPos.x.toFloat(), cameraPos.y.toFloat(), cameraPos.z.toFloat())
             .rotate(textData.cameraRotation)
             .scale(scaleFactor, -scaleFactor, scaleFactor)
         

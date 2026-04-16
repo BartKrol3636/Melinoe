@@ -176,6 +176,7 @@ object ModuleManager {
             HitboxModule,
             HideArmorModule,
             ArmorHUDModule,
+            PuzzleSolverModule,
             
             // Tracking
             LifetimeStatsModule,
